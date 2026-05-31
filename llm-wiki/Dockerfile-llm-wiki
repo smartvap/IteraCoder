@@ -1,0 +1,68 @@
+ARG ARCH=amd64
+FROM 134.84.61.26/library/python:3.11-slim
+
+ARG http_proxy
+ARG https_proxy
+ARG no_proxy
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /workspace
+
+RUN export http_proxy=${http_proxy} && \
+    export https_proxy=${https_proxy} && \
+    export no_proxy=${no_proxy} && \
+    apt clean && \
+    apt update && \
+    apt upgrade -y && \
+    apt install -y \
+    vim \
+    curl \
+    fonts-noto-cjk \
+    fonts-wqy-microhei \
+    fonts-wqy-zenhei \
+    python3-pip \
+    iptables \
+    locales \
+    bind9-dnsutils \
+    dnsmasq \
+    iputils-ping \
+    telnet \
+    iproute2 \
+    wget \
+    zstd \
+    && rm -rf /var/lib/apt/lists/* && \
+    unset http_proxy && \
+    unset https_proxy && \
+    unset no_proxy
+
+RUN sed -i 's/^# *\(zh_CN.UTF-8\)/\1/' /etc/locale.gen && \
+    locale-gen zh_CN.UTF-8 && \
+    update-locale LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8
+
+RUN echo 'export LANG=zh_CN.UTF-8' >> /root/.bashrc && \
+    echo 'export LANGUAGE=zh_CN:zh' >> /root/.bashrc && \
+    echo 'export LC_ALL=zh_CN.UTF-8' >> /root/.bashrc
+
+COPY dnsmasq.conf /etc/dnsmasq.conf
+
+ENV OLLAMA_BASE_URL=http://ollama.local:11434
+ENV OLLAMA_MODEL=llama3.2:3b
+ENV OLLAMA_EMBEDDING_MODEL=all-minilm
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+
+COPY llm-wiki-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+RUN export http_proxy=${http_proxy} && \
+    export https_proxy=${https_proxy} && \
+    export no_proxy=${no_proxy} && \
+    pip install obsidian-llm-wiki pyyaml python-dotenv rank-bm25 requests && \
+    unset http_proxy && \
+    unset https_proxy && \
+    unset no_proxy
+
+RUN mkdir -p /vaults
+
+ENTRYPOINT ["docker-entrypoint.sh"]

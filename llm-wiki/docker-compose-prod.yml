@@ -1,0 +1,82 @@
+services:
+
+  obsidian:
+    image: lscr.io/linuxserver/obsidian:latest
+    container_name: obsidian
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+      - CUSTOM_USER=${OBSIDIAN_CUSTOM_USER:-HAdt6M}
+      - PASSWORD=${OBSIDIAN_PASSWORD:-Zso5OK0Ai}
+      - SSL_ENABLED=false
+    volumes:
+      - ./obsidian-config:/config
+      - ./obsidian-vaults:/vaults
+    networks:
+      llm-net:
+        ipv4_address: ${OBSIDIAN_CONTAINER_IPV4:-172.90.108.2}
+
+  llm-wiki:
+    image: llm-wiki:v1.1.0-rc8
+    container_name: llm-wiki
+    restart: unless-stopped
+    volumes:
+      - ./llm-wiki-data:/workspace
+      - ./obsidian-vaults:/vaults
+      - ./llm-wiki-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro
+    dns:
+      - 127.0.0.1
+    dns_search:
+      - .
+    dns_opt:
+      - ndots:2
+      - timeout:2
+      - attempts:2
+    tty: true
+    stdin_open: true
+    working_dir: /workspace
+    environment:
+      - OLLAMA_BASE_URL=http://ollama-local:11434
+      - OLLAMA_MODEL=llama3.2:3b
+      - OLLAMA_EMBEDDING_MODEL=all-minilm
+    networks:
+      llm-net:
+        ipv4_address: ${OBSIDIAN_CONTAINER_IPV4:-172.90.108.3}
+
+  hermes:
+    image: nousresearch/hermes-agent:latest
+    container_name: hermes
+    restart: unless-stopped
+    volumes:
+      - ./hermes-data:/home/user
+      - ./obsidian-vaults:/vaults:ro
+      - ./agents:/agents:ro
+    environment:
+      - HERMES_MODEL=llama3.2:3b
+      - HERMES_PROVIDER=ollama
+      - HERMES_API_BASE_URL=http://ollama.local:11434/v1
+      - HERMES_API_KEY=ollama
+      - HERMES_KNOWLEDGE_VAULT=/vaults/knowledge-base
+      - HERMES_ACCEPT_HOOKS=1
+    command:
+      - /bin/bash
+      - -c
+      - |
+        hermes config set provider ollama
+        hermes config set base_url http://ollama.local:11434/v1
+        hermes config set model llama3.2:3b
+        hermes chat --model llama3.2:3b
+    networks:
+      llm-net:
+        ipv4_address: ${OBSIDIAN_CONTAINER_IPV4:-172.90.108.4}
+
+networks:
+  llm-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.90.108.0/24
+          gateway: 172.90.108.1
+          ip_range: 172.90.108.0/27
