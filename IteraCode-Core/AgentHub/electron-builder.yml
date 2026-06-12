@@ -1,0 +1,47 @@
+appId: com.iteracoder.agent-hub
+productName: 需求拆解Agent
+copyright: Copyright © 2024 IteraCoder
+directories:
+  output: release
+  buildResources: public
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+win:
+  icon: public/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  installerIcon: public/icon.png
+  uninstallerIcon: public/icon.png
+  installerHeaderIcon: public/icon.png
+  createDesktopShortcut: true
+  shortcutName: 需求拆解Agent
+mac:
+  icon: public/icon.png
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+linux:
+  icon: public/icon.png
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+extraResources:
+  - from: public
+    to: public
+    filter:
+      - "**/*"
