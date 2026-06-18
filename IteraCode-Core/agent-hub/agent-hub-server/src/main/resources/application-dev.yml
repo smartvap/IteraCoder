@@ -1,0 +1,42 @@
+spring:
+  ai:
+    dashscope:
+      api-key: ${QWENAPIKEY}
+      model: deepseek-v4-pro
+    ollama:
+      base-url: http://localhost:11434
+      timeout: 30s
+      chat:
+        model: gemma2:2b
+        options:
+          num-parallel: 2
+          num-ctx: 2048
+          max-tokens: 1024
+          temperature: 0.7
+      models: "{gemma2: 'gemma2:2b', qwen3: 'qwen3:4b'}"
+
+  datasource:
+    username: root
+    password: 123456
+    url: jdbc:mysql://192.168.46.128:3306/ai_server?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    type: com.alibaba.druid.pool.DruidDataSource
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+  data:
+    redis:
+      host: 192.168.46.128
+      port: 6379
+      timeout: 10000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 4
+          min-idle: 1
+          max-wait: 2000ms
+
+logging:
+  level:
+    root: INFO

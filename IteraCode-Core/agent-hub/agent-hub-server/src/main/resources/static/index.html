@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自动化研发智能体系统AI对话</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #f5f5f5;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        /* 核心：按钮容器，强制一行居中 */
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            gap: 15px; /* 按钮之间的间距 */
+            margin: 20px 0;
+        }
+
+        /* 按钮样式，去掉100%宽度 */
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            white-space: nowrap; /* 防止文字换行 */
+            flex: 0 0 auto; /* 关键：禁止按钮自动拉伸 */
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        #loading {
+            display: none;
+            margin: 20px auto;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #response {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            background-color: #fff;
+            min-height: 100px;
+            line-height: 1.6;
+        }
+
+        #response pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+
+        #response code {
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+    </style>
+</head>
+<body>
+<h1>与自动化研发智能体系统AI对话</h1>
+<textarea id="userMessage" rows="4" placeholder="请输入您的问题..."></textarea>
+
+<div class="btn-group">
+    <button onclick="sendMessage('gemma2')">发送ollama gemma2</button>
+    <button onclick="sendMessage('qwen3')">发送ollama qwen3</button>
+    <button onclick="sendMessage('deepseek-v4-pro')">发送deepseek</button>
+    <button onclick="sendMessage('qwen-max')">发送qwen-max</button>
+</div>
+
+<div id="loading"></div>
+<div id="response"></div>
+
+<script>
+    async function sendMessage(modelName) {
+        const messageInput = document.getElementById('userMessage');
+        const message = messageInput.value.trim();
+
+        if (!message) {
+            alert('请输入消息');
+            return;
+        }
+
+        const loadingElement = document.getElementById('loading');
+        const responseElement = document.getElementById('response');
+        loadingElement.style.display = 'block';
+        responseElement.innerHTML = '';
+
+        try {
+            const response = await fetch(`/api/v1/chat/stream2`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `model=${encodeURIComponent(modelName)}&message=${encodeURIComponent(message)}&prompt=${encodeURIComponent('你是一名自动化研发智能体系统助手，致力于帮助人们解决问题.请以中文回答问题')}`
+            });
+
+            if (!response.ok) {
+                throw new Error(`请求失败，状态码: ${response.status}`);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let fullResponse = '';
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                buffer += chunk;
+
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (const line of lines) {
+                    if (line.trim() === '') continue;
+                    if (line.startsWith('data:')) {
+                        const content = line.substring(5).trim();
+                        if (content) {
+                            fullResponse += content;
+                            responseElement.innerHTML = marked.parse(fullResponse);
+                            responseElement.scrollTop = responseElement.scrollHeight;
+                        }
+                    } else {
+                        fullResponse += line;
+                        responseElement.innerHTML = marked.parse(fullResponse);
+                        responseElement.scrollTop = responseElement.scrollHeight;
+                    }
+                }
+            }
+
+            loadingElement.style.display = 'none';
+            messageInput.value = '';
+
+        } catch (error) {
+            console.error('请求失败:', error);
+            loadingElement.style.display = 'none';
+            responseElement.innerHTML = '<p style="color: red;">请求失败，请稍后再试</p>';
+        }
+    }
+
+    // 支持回车键发送（默认发 gemma2，可改）
+    document.getElementById('userMessage').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage('gemma2');
+        }
+    });
+</script>
+</body>
+</html>
