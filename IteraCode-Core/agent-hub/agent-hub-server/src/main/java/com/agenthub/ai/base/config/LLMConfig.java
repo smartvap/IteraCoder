@@ -3,6 +3,8 @@ package com.agenthub.ai.base.config;
 import com.alibaba.cloud.ai.dashscope.api.DashScopeApi;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
@@ -13,119 +15,125 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Bean;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
 import reactor.core.publisher.Flux;
-
-import java.util.Map;
 
 @Slf4j
 @Configuration
+@RequiredArgsConstructor
+@EnableConfigurationProperties(ModelConfigProperties.class)
 public class LLMConfig {
 
-    @Value("${spring.ai.ollama.base-url}")
-    private String ollamaBaseUrl;
-
-    @Value("#{${spring.ai.ollama.models}}")
-    private Map<String, String> modelNames;
-
-    @Value("${spring.ai.dashscope.api-key:}")
-    private String dashscopeApiKey;
-
-    private OllamaApi ollamaApi() {
-        return OllamaApi.builder()
-                .baseUrl(ollamaBaseUrl)
-                .build();
-    }
-
-    private OllamaChatModel createChatModel(String modelName, double temperature, int maxTokens) {
-        OllamaChatOptions options = OllamaChatOptions.builder()
-                .model(modelName)
-                .temperature(temperature)
-                .build();
-
-        return OllamaChatModel.builder()
-                .ollamaApi(ollamaApi())
-                .defaultOptions(options)
-                .build();
-    }
-
-    @Bean("gemma2ChatModel")
-    @Primary
-    public ChatModel gemma2ChatModel() {
-        OllamaChatModel delegate = createChatModel(modelNames.get("gemma2"), 0.7, 512);
-        return new LoggingChatModel(delegate, "gemma2");
-    }
-
-    @Bean("gemma2ChatClient")
-    @Primary
-    public ChatClient gemma2ChatClient() {
-        return ChatClient.builder(gemma2ChatModel()).build();
-    }
-
-    @Bean("qwenChatModel")
-    public ChatModel qwenChatModel() {
-        OllamaChatModel delegate = createChatModel(modelNames.get("qwen3"), 0.5, 1024);
-        return new LoggingChatModel(delegate, "qwen3");
-    }
-
-    @Bean("qwenChatClient")
-    public ChatClient qwenChatClient() {
-        return ChatClient.builder(qwenChatModel()).build();
-    }
-
-    @Bean("dashscopeDeepseekChatModel")
-    @ConditionalOnProperty(name = "spring.ai.dashscope.api-key", matchIfMissing = false)
-    public DashScopeChatModel dashscopeDeepseekChatModel() {
-        if (dashscopeApiKey == null || dashscopeApiKey.isEmpty()) {
-            throw new IllegalStateException("DashScope API Key 未配置，请在 application.yml 中配置 spring.ai.dashscope.api-key");
-        }
-        return DashScopeChatModel.builder()
-                .dashScopeApi(DashScopeApi.builder()
-                        .apiKey(dashscopeApiKey)
-                        .build())
-                .defaultOptions(DashScopeChatOptions.builder()
-                        .model("deepseek-v4-pro")
-                        .temperature(0.7)
-                        .build())
-                .build();
-    }
-
-    @Bean("dashscopeDeepseekChatClient")
-    @ConditionalOnProperty(name = "spring.ai.dashscope.api-key", matchIfMissing = false)
-    public ChatClient dashscopeDeepseekChatClient() {
-        return ChatClient.builder(dashscopeDeepseekChatModel()).build();
-    }
-
-    @Bean("dashscopeQwenMaxChatModel")
-    @ConditionalOnProperty(name = "spring.ai.dashscope.api-key", matchIfMissing = false)
-    public DashScopeChatModel dashscopeQwenMaxChatModel() {
-        if (dashscopeApiKey == null || dashscopeApiKey.isEmpty()) {
-            throw new IllegalStateException("DashScope API Key 未配置，请在 application.yml 中配置 spring.ai.dashscope.api-key");
-        }
-        return DashScopeChatModel.builder()
-                .dashScopeApi(DashScopeApi.builder()
-                        .apiKey(dashscopeApiKey)
-                        .build())
-                .defaultOptions(DashScopeChatOptions.builder()
-                        .model("qwen-max")
-                        .temperature(0.5)
-                        .build())
-                .build();
-    }
-
-    @Bean("dashscopeQwenMaxChatClient")
-    @ConditionalOnProperty(name = "spring.ai.dashscope.api-key", matchIfMissing = false)
-    public ChatClient dashscopeQwenMaxChatClient() {
-        return ChatClient.builder(dashscopeQwenMaxChatModel()).build();
-    }
+    private final ModelConfigProperties modelConfigProperties;
+    private final DefaultListableBeanFactory beanFactory;
 
     /**
-     * ChatModel 包装类：拦截 stream/call，打印发给 Ollama 的完整 Prompt（含合并后的 Options）
+     * 启动后动态注册所有 ChatModel 和 ChatClient Bean
      */
+    @PostConstruct
+    void registerModelBeans() {
+        OllamaApi ollamaApi = buildOllamaApi();
+        DashScopeApi dashScopeApi = buildDashScopeApi();
+
+        for (ModelConfigProperties.ModelConfig mc : modelConfigProperties.getModels()) {
+            String name = mc.getName();
+            if (name == null || name.isEmpty()) {
+                log.warn("跳过无效模型配置: name 为空");
+                continue;
+            }
+
+            ChatModel chatModel;
+            if ("ollama".equalsIgnoreCase(mc.getType())) {
+                chatModel = createOllamaChatModel(ollamaApi, mc);
+            } else if ("dashscope".equalsIgnoreCase(mc.getType())) {
+                if (dashScopeApi == null) {
+                    log.warn("跳过 DashScope 模型 '{}': API Key 未配置", name);
+                    continue;
+                }
+                chatModel = createDashScopeChatModel(dashScopeApi, mc);
+            } else {
+                log.warn("跳过未知类型的模型 '{}': type={}", name, mc.getType());
+                continue;
+            }
+
+            // 1. 注册 ChatModel Bean → "{name}ChatModel"（可单独 @Qualifier 注入）
+            beanFactory.registerSingleton(name + "ChatModel", chatModel);
+
+            // 2. 注册 ChatClient Bean → "{name}"（Spring Map<String, ChatClient> 自动收集）
+            ChatClient chatClient = ChatClient.builder(chatModel).build();
+            beanFactory.registerSingleton(name, chatClient);
+
+            log.info("注册模型: name={}, type={}, model={}, temperature={}",
+                    name, mc.getType(), mc.getModel(), mc.getTemperature());
+        }
+
+        // 3. 设置 Primary ChatModel（先精确匹配配置的 primary 名，否则取第一个）
+        String primaryName = modelConfigProperties.getPrimary();
+        if (primaryName != null && !primaryName.isEmpty()) {
+            Object singleton = beanFactory.getSingleton(primaryName + "ChatModel");
+            if (singleton instanceof ChatModel cm) {
+                beanFactory.registerResolvableDependency(ChatModel.class, cm);
+                log.info("主模型: {} (由 spring.ai.primary 指定)", primaryName);
+                return;
+            }
+            log.warn("配置的 primary={} 在 models 列表中未找到，回退到第一个模型", primaryName);
+        }
+        // 回退
+        if (!modelConfigProperties.getModels().isEmpty()) {
+            String firstName = modelConfigProperties.getModels().get(0).getName();
+            Object singleton = beanFactory.getSingleton(firstName + "ChatModel");
+            if (singleton instanceof ChatModel cm) {
+                beanFactory.registerResolvableDependency(ChatModel.class, cm);
+                log.info("主模型(回退): {} (未配置 spring.ai.primary，取第一个)", firstName);
+            }
+        }
+    }
+
+    // ===== 私有工厂方法 =====
+
+    private OllamaApi buildOllamaApi() {
+        String baseUrl = modelConfigProperties.getOllama().getBaseUrl();
+        if (baseUrl == null || baseUrl.isEmpty()) {
+            baseUrl = "http://localhost:11434";
+        }
+        return OllamaApi.builder().baseUrl(baseUrl).build();
+    }
+
+    private DashScopeApi buildDashScopeApi() {
+        String apiKey = modelConfigProperties.getDashscope().getApiKey();
+        if (apiKey == null || apiKey.isEmpty() || apiKey.contains("$")) {
+            return null;
+        }
+        return DashScopeApi.builder().apiKey(apiKey).build();
+    }
+
+    private ChatModel createOllamaChatModel(OllamaApi ollamaApi, ModelConfigProperties.ModelConfig mc) {
+        OllamaChatOptions options = OllamaChatOptions.builder()
+                .model(mc.getModel())
+                .temperature(mc.getTemperature())
+                .build();
+        OllamaChatModel delegate = OllamaChatModel.builder()
+                .ollamaApi(ollamaApi)
+                .defaultOptions(options)
+                .build();
+        return new LoggingChatModel(delegate, mc.getName());
+    }
+
+    private ChatModel createDashScopeChatModel(DashScopeApi api, ModelConfigProperties.ModelConfig mc) {
+        return DashScopeChatModel.builder()
+                .dashScopeApi(api)
+                .defaultOptions(DashScopeChatOptions.builder()
+                        .model(mc.getModel())
+                        .temperature(mc.getTemperature())
+                        .maxToken(mc.getMaxTokens())
+                        .build())
+                .build();
+    }
+
+    // ===== LoggingChatModel 内部类 =====
+
     static class LoggingChatModel implements ChatModel, StreamingChatModel {
 
         private final OllamaChatModel delegate;
@@ -141,7 +149,7 @@ public class LLMConfig {
             ChatOptions merged = delegate.getDefaultOptions();
             log.info("[Ollama][{}] call | 模型={} | 合并选项={} | 消息数={}",
                     label,
-                    merged != null ? ((OllamaChatOptions) merged).getModel() : "?",
+                    merged != null ? (merged instanceof OllamaChatOptions o ? o.getModel() : "?") : "?",
                     merged,
                     prompt.getInstructions().size());
             for (int i = 0; i < prompt.getInstructions().size(); i++) {
@@ -158,7 +166,7 @@ public class LLMConfig {
             ChatOptions merged = delegate.getDefaultOptions();
             log.info("[Ollama][{}] stream | 模型={} | 合并选项={} | 消息数={}",
                     label,
-                    merged != null ? ((OllamaChatOptions) merged).getModel() : "?",
+                    merged != null ? (merged instanceof OllamaChatOptions o ? o.getModel() : "?") : "?",
                     merged,
                     prompt.getInstructions().size());
             for (int i = 0; i < prompt.getInstructions().size(); i++) {

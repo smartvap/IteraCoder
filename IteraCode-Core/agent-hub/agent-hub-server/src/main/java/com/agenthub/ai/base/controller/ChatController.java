@@ -8,7 +8,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
@@ -33,17 +32,8 @@ public class ChatController {
     private final Map<String, ChatClient> chatClients;
     private final ChatMemory chatMemory;
 
-    public ChatController(@Qualifier("gemma2ChatClient") ChatClient gemma2ChatClient,
-                          @Qualifier("qwenChatClient") ChatClient qwenChatClient,
-                          @Qualifier("dashscopeDeepseekChatClient") ChatClient dashscopeDeepseekChatClient,
-                          @Qualifier("dashscopeQwenMaxChatClient") ChatClient dashscopeQwenMaxChatClient,
-                          ChatMemory chatMemory) {
-        this.chatClients = Map.of(
-                "gemma2", gemma2ChatClient,
-                "qwen3", qwenChatClient,
-                "deepseek-v4-pro", dashscopeDeepseekChatClient,
-                "qwen-max", dashscopeQwenMaxChatClient
-                );
+    public ChatController(Map<String, ChatClient> chatClients, ChatMemory chatMemory) {
+        this.chatClients = chatClients;
         this.chatMemory = chatMemory;
 
 //        ChatOptions options = ChatOptions.builder()

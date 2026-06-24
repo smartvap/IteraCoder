@@ -28,7 +28,6 @@ import org.springframework.ai.chat.client.advisor.PromptChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -52,7 +51,7 @@ public class AiRagController {
                         """;
 
 
-    public AiRagController(@Qualifier("gemma2ChatModel") ChatModel  chatModel, ChatMemory chatMemory) {
+    public AiRagController(ChatModel chatModel, ChatMemory chatMemory) {
         this.chatClient = ChatClient.builder(chatModel)
                 // 隐式
                 .defaultSystem(DEFAULT_SYSTEM_PROMPT)
