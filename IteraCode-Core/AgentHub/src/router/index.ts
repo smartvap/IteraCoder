@@ -29,7 +29,7 @@ router.beforeEach((to, _from, next) => {
     } else if (
       to.meta.roles &&
       Array.isArray(to.meta.roles) &&
-      !to.meta.roles.includes(userRole)
+      userRole && !to.meta.roles.includes(userRole)
     ) {
       ElMessage({ message: "您没有权限访问该页面", type: "error" })
       next({ name: "chat" })

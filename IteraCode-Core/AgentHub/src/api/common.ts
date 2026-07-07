@@ -9,10 +9,10 @@ export const enum AgentApi {
 }
 
 export const enum AuthApi {
-  Login = "/auth/login",
-  Register = "/auth/register",
-  Password = "/auth/password",
-  UserInfo = "/auth/userinfo",
+  Login = "/user/login",
+  Register = "/user/register",
+  Password = "/user/updatePassword",
+  UserInfo = "/user/{id}",
 }
 
 export const enum ChatApi {

@@ -9,30 +9,30 @@ files:
   - electron/**/*
   - package.json
 win:
-  icon: public/icon.png
   target:
     - target: nsis
       arch:
         - x64
   artifactName: ${productName}-Setup-${version}.${ext}
+  icon: public/icon.ico
+  signAndEditExecutable: false
 nsis:
   oneClick: false
   perMachine: true
   allowToChangeInstallationDirectory: true
-  installerIcon: public/icon.png
-  uninstallerIcon: public/icon.png
-  installerHeaderIcon: public/icon.png
   createDesktopShortcut: true
   shortcutName: 需求拆解Agent
+  deleteAppDataOnUninstall: true
+  installerIcon: public/icon.ico
+  uninstallerIcon: public/icon.ico
 mac:
-  icon: public/icon.png
   target:
     - target: dmg
       arch:
         - x64
         - arm64
+  icon: public/icon.ico
 linux:
-  icon: public/icon.png
   target:
     - target: AppImage
       arch:
@@ -40,8 +40,9 @@ linux:
     - target: deb
       arch:
         - x64
+  icon: public/icon.png
 extraResources:
-  - from: public
-    to: public
+  - from: server
+    to: server
     filter:
       - "**/*"

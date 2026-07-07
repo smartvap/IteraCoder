@@ -1,6 +1,26 @@
 <template>
   <div class="login-container">
-    <div class="login-card">
+    <!-- 未登录：展示入口按钮 -->
+    <div v-if="!appStore.isLoggedIn && !showLogin" class="login-card">
+      <div class="login-header">
+        <div class="logo">🤖</div>
+        <h2>个人中心</h2>
+        <p class="subtitle">RDA-AI 自动化研发智能体系统</p>
+      </div>
+      <div class="login-entry">
+        <el-button type="primary" size="large" class="btn-block" @click="showLogin = true">
+          登录
+        </el-button>
+        <div class="login-footer" style="margin-top: 12px;">
+          <el-button link class="skip-btn" @click="handleSkipLogin">
+            跳过登录，直接使用
+          </el-button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 登录表单 -->
+    <div v-else-if="!appStore.isLoggedIn" class="login-card">
       <div class="login-header">
         <div class="logo">🤖</div>
         <h2>用户登录</h2>
@@ -54,6 +74,38 @@
         <el-button link class="skip-btn" @click="handleSkipLogin">
           跳过登录，直接使用
         </el-button>
+        <el-button link @click="showLogin = false">
+          返回
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 游客登录：请真实登录 -->
+    <div v-else-if="appStore.skipLogin" class="login-card">
+      <div class="login-header">
+        <div class="logo">🤖</div>
+        <h2>个人中心</h2>
+        <p class="subtitle">您正在使用游客模式</p>
+      </div>
+      <div class="login-entry">
+        <el-button type="primary" size="large" class="btn-block" @click="handleGuestToLogin">
+          去登录
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 已登录：展示用户信息 -->
+    <div v-else class="login-card">
+      <div class="login-header">
+        <div class="logo">🤖</div>
+        <h2>个人中心</h2>
+        <p class="subtitle">{{ appStore.username }}，欢迎回来</p>
+      </div>
+      <div class="login-entry" style="text-align: center;">
+        <el-descriptions :column="1" border style="margin-bottom: 20px;">
+          <el-descriptions-item label="用户名">{{ appStore.username }}</el-descriptions-item>
+        </el-descriptions>
+        <el-button type="danger" @click="handleLogout">退出登录</el-button>
       </div>
     </div>
 
@@ -111,6 +163,7 @@ import type { FormInstance, FormRules } from "element-plus"
 const router = useRouter()
 const appStore = useAppStore()
 
+const showLogin = ref(false)
 const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
 
@@ -137,29 +190,45 @@ async function handleLogin() {
       localStorage.setItem("token", data.data.token)
       localStorage.setItem("userRole", data.data.userName)
       localStorage.setItem("userId", data.data.id)
-      appStore.login(loginForm.userName)
+      localStorage.setItem("username", loginForm.userName)
+      appStore.saveSettings({})
+      // 加载服务端配置
+      if (data.data.settings) {
+        const remoteSettings = JSON.parse(data.data.settings)
+        appStore.saveSettings(remoteSettings)
+      }
+      // 同步本地数据到后端
+      import("@/utils/dataRouter").then(m => m.syncLocalToBackend()).catch(() => {})
+      // 刷新 API 地址切换到远程接口
+      import("@/http/config").then(m => m.refreshBaseUrl()).catch(() => {})
       ElMessage.success("登录成功")
-      router.push("/ragChat")
+      router.push("/chat-index")
     } else {
       ElMessage.error(data.message || "用户名或密码错误")
     }
-  } catch (_e) {
-    // 离线模式
-    localStorage.setItem("token", "dev-token")
-    localStorage.setItem("username", loginForm.userName)
-    appStore.login(loginForm.userName)
-    ElMessage.success("登录成功（离线模式）")
-    router.push("/ragChat")
+  } catch (e: any) {
+    ElMessage.error(e.message || "登录失败，请检查网络或联系管理员")
   } finally {
     loading.value = false
   }
+}
+
+function handleLogout() {
+  appStore.logout()
+  showLogin.value = false
+  ElMessage.success("已退出登录")
+}
+
+function handleGuestToLogin() {
+  appStore.logout()
+  showLogin.value = true
 }
 
 function handleSkipLogin() {
   appStore.skipLoginAction()
   localStorage.setItem("token", "guest-token")
   ElMessage.success("已跳过登录")
-  router.push("/ragChat")
+  router.push("/chat-index")
 }
 
 // ===== 注册 =====

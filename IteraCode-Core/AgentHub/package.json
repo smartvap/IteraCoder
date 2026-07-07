@@ -2,26 +2,32 @@
   "name": "agent-hub",
   "version": "1.0.0",
   "description": "需求拆解 Agent - 智能需求拆解与执行平台",
-  "main": "electron/main.js",
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc && vite build",
     "preview": "vite preview",
     "electron:dev": "vite build && electron .",
-    "electron:build": "vite build && electron-builder",
-    "electron:build:win": "vite build && electron-builder --win",
-    "electron:preview": "vite build && electron-builder --dir"
+    "electron:build": "vite build && set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ && set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ && electron-builder",
+    "electron:build:win": "vite build && set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ && set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ && electron-builder --win",
+    "electron:preview": "vite build && set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ && set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ && electron-builder --dir"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
     "@microsoft/fetch-event-source": "^2.0.1",
+    "@types/dompurify": "^3.0.5",
+    "@types/sql.js": "^1.4.11",
     "axios": "^1.6.8",
+    "dompurify": "^3.4.11",
     "element-plus": "^2.6.3",
     "highlight.js": "^11.9.0",
     "marked": "^12.0.2",
     "pinia": "^2.1.7",
+    "remend": "^1.3.0",
+    "sql.js": "^1.14.1",
     "vue": "^3.4.21",
+    "vue-i18n": "^9.14.5",
     "vue-router": "^4.3.0"
   },
   "devDependencies": {

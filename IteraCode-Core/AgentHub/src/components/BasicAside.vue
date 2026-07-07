@@ -23,7 +23,7 @@
           <el-icon>
             <component :is="item.meta?.icon"></component>
           </el-icon>
-          <template #title>{{ item.meta?.description }}</template>
+          <template #title>{{ item.meta?.description ? $t(item.meta.description) : '' }}</template>
         </el-menu-item>
       </template>
     </el-menu>
@@ -60,7 +60,7 @@ const menuRouterList = computed(() => {
     if (!item.meta?.isMenu) return false
     if (item.path === "/login") return !token
     if (item.meta?.requiresAuth && !token) return false
-    if (item.meta?.roles && !item.meta.roles.includes(userRole)) return false
+    if (item.meta?.roles && userRole && !item.meta.roles.includes(userRole)) return false
     return true
   })
 })

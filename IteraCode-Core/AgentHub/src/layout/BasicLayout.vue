@@ -26,7 +26,7 @@
             <span class="header-title">{{ currentTitle }}</span>
           </div>
           <div class="header-right">
-            <el-dropdown @command="handleCommand">
+            <el-dropdown v-if="appStore.isLoggedIn" @command="handleCommand">
               <span class="user-dropdown">
                 <el-icon :size="16"><User /></el-icon>
                 {{ username }}
@@ -38,15 +38,35 @@
                     <el-icon :size="16"><Setting /></el-icon> 系统设置
                   </el-dropdown-item>
                   <el-dropdown-item divided command="logout">
-                    <el-icon :size="16"><SwitchButton /></el-icon> 退出系统
+                    <el-icon :size="16"><SwitchButton /></el-icon> 退出登录
                   </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
+            <el-button v-else type="primary" size="small" @click="router.push('/login')">
+              <el-icon :size="14" style="margin-right:4px"><User /></el-icon>
+              登录
+            </el-button>
+            <!-- Electron 窗口控制按钮 -->
+            <div v-if="isElectron" class="electron-controls">
+              <button class="win-btn" title="最小化" @click="minimizeWin">
+                <svg width="12" height="12" viewBox="0 0 12 12"><rect y="5" width="12" height="2" fill="currentColor"/></svg>
+              </button>
+              <button class="win-btn" title="最大化" @click="maximizeWin">
+                <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+              </button>
+              <button class="win-btn win-close" title="关闭" @click="closeWin">
+                <svg width="12" height="12" viewBox="0 0 12 12"><line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" stroke-width="1.5"/></svg>
+              </button>
+            </div>
           </div>
         </el-header>
         <el-main class="layout-main">
-          <RouterView />
+          <RouterView v-slot="{ Component }">
+            <KeepAlive :include="['AgentChat']">
+              <component :is="Component" />
+            </KeepAlive>
+          </RouterView>
         </el-main>
       </el-container>
     </el-container>
@@ -56,9 +76,16 @@
 <script setup lang="ts">
 import { logout } from "@/api/authUtils"
 import { useAppStore } from "@/store/app"
+import { i18n } from "@/locales"
 import BasicAside from "@/components/BasicAside.vue"
 import { User, ArrowDown, Setting, SwitchButton, Fold, Expand } from "@element-plus/icons-vue"
 import routes from "@/router/config"
+
+const isElectron = !!(window as any).electronAPI
+
+function minimizeWin() { (window as any).electronAPI?.minimize() }
+function maximizeWin() { (window as any).electronAPI?.maximize() }
+function closeWin() { (window as any).electronAPI?.close() }
 
 const route = useRoute()
 const router = useRouter()
@@ -78,7 +105,8 @@ const username = computed(() => appStore.username || "用户")
 
 const currentTitle = computed(() => {
   const r = routes.find((r) => r.path === route.path)
-  return r?.meta?.description || "Agent Hub"
+  const desc = r?.meta?.description as string
+  return desc ? i18n.global.t(desc) : "Agent Hub"
 })
 
 function toggleAside() {
@@ -123,6 +151,7 @@ const handleCommand = (command: string) => {
   background-color: #fff;
   border-radius: 4px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  -webkit-app-region: drag;
 
   .header-left {
     display: flex;
@@ -163,6 +192,19 @@ const handleCommand = (command: string) => {
     }
   }
 }
+
+.electron-controls {
+  display: flex; align-items: center; gap: 4px; margin-left: 12px;
+  -webkit-app-region: no-drag;
+}
+.win-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border: none; border-radius: 4px;
+  background: transparent; color: #666; cursor: pointer;
+  transition: background .1s;
+}
+.win-btn:hover { background: #e5e5e5; }
+.win-close:hover { background: #e81123; color: #fff; }
 
 .layout-main {
   height: calc(100vh - 68px);

@@ -30,8 +30,17 @@
         />
       </div>
 
+      <div class="model-selector">
+        <span class="model-label">模型：</span>
+        <el-select v-model="selectedModel" size="small" style="width: 180px">
+          <el-option label="Gemma4 (本地)" value="gemma2" />
+          <el-option label="Qwen3.6 (本地)" value="qwen3" />
+        </el-select>
+      </div>
+
       <div class="button-group">
-        <el-button type="primary" @click="handleRagSend" :loading="isLoading">RAG回答</el-button>
+        <el-button v-if="!isLoading" type="primary" @click="handleRagSend">发送</el-button>
+        <el-button v-else type="danger" @click="stopChat">停止</el-button>
         <el-button type="warning" @click="clearMessages">清空对话</el-button>
       </div>
     </el-card>
@@ -55,6 +64,8 @@ const isLoading = ref(false)
 const messageContainer = ref<HTMLElement | null>(null)
 const knowledgeFiles = ref<StoreFile[]>([])
 const selectedFiles = ref<string[]>([])
+const selectedModel = ref('gemma2')
+let abortController: AbortController | null = null
 
 // 加载知识库文件列表
 const loadKnowledgeFiles = () => {
@@ -83,6 +94,15 @@ const loadKnowledgeFiles = () => {
       });
     });
 };
+
+// 停止对话
+const stopChat = () => {
+  if (abortController) {
+    abortController.abort()
+    abortController = null
+  }
+  isLoading.value = false
+}
 
 // 处理普通对话
 const handleSend = async () => {
@@ -125,60 +145,36 @@ const sendMessage = async (url: string, selectedFileIds: string[] = []) => {
  
   // 获取选中的文件名
   const fileSources = selectedFileIds.map(id => {
-    const file = knowledgeFiles.value.find(f => f.id === id)
+    const file = knowledgeFiles.value.find(f => String(f.id) === id)
     return file ? file.fileName : ''
   }).filter(name => name !== '')
   
-  // 使用更新后的getStreamChat函数，它始终使用POST请求
-  if (fileSources.length > 0) {
-    // 有文件选择时，传递sources参数
-    getStreamChat(currentInput, url, (value) => {
+  const streamModel = selectedModel.value || 'gemma2'
+
+  abortController = getStreamChat(
+    currentInput,
+    url,
+    (value: any) => {
       const text = value.data;
-      
-      // 如果是第一包数据，且当前内容是占位符，先清空
       if (isFirstChunk && reactiveMessage.content === '正在思考中...') {
         reactiveMessage.content = '';
         isFirstChunk = false;
       }
-
-      // 3. 修改响应式对象
-      reactiveMessage.content += text 
-      
-      // 滚动到底部
+      reactiveMessage.content += text
       scrollToBottom()
-
-    }, (error) => {
+    },
+    (error: any) => {
       window.console.error('Error:', error)
       reactiveMessage.content = '抱歉，发生了错误，请稍后重试。'
-    }, () => { 
+    },
+    () => {
       isLoading.value = false
       reactiveMessage.isTyping = false
-    }, fileSources)
-  } else {
-    // 无文件选择时，不传递sources参数
-    getStreamChat(currentInput, url, (value) => {
-      const text = value.data;
-      
-      // 如果是第一包数据，且当前内容是占位符，先清空
-      if (isFirstChunk && reactiveMessage.content === '正在思考中...') {
-        reactiveMessage.content = '';
-        isFirstChunk = false;
-      }
-
-      // 3. 修改响应式对象
-      reactiveMessage.content += text 
-      
-      // 滚动到底部
-      scrollToBottom()
-
-    }, (error) => {
-      window.console.error('Error:', error)
-      reactiveMessage.content = '抱歉，发生了错误，请稍后重试。'
-    }, () => { 
-      isLoading.value = false
-      reactiveMessage.isTyping = false
-    })
-  }
+      abortController = null
+    },
+    fileSources.length > 0 ? fileSources : undefined,
+    streamModel
+  )
 };
 
 // 滚动到底部
@@ -250,7 +246,7 @@ const removeSelectedFile = (fileId: string) => {
 
 // 根据文件ID获取文件名
 const getFileNameById = (fileId: string) => {
-  const file = knowledgeFiles.value.find(f => f.id === fileId)
+  const file = knowledgeFiles.value.find(f => String(f.id) === fileId)
   return file ? file.fileName : ''
 }
 
@@ -482,6 +478,20 @@ onMounted(() => {
 
   .el-textarea {
     flex: 1;
+  }
+}
+
+.model-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 0 10px;
+
+  .model-label {
+    font-size: 13px;
+    color: #606266;
+    flex-shrink: 0;
   }
 }
 

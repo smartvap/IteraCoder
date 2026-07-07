@@ -12,6 +12,8 @@ import * as ElementPlusIconsVue from "@element-plus/icons-vue"
 import { createPinia } from "pinia"
 import hljs from "highlight.js"
 import "highlight.js/styles/atom-one-light.css"
+// 导入 i18n
+import { i18n } from "@/locales"
 const pinia = createPinia()
 
 const app = createApp(App)
@@ -21,6 +23,8 @@ app.use(router)
 app.use(pinia)
 // 使用 Element Plus
 app.use(ElementPlus)
+// 使用 i18n
+app.use(i18n)
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }
