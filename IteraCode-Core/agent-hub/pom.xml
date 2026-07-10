@@ -34,6 +34,7 @@
         <milvus-spring-ai.version>1.1.2</milvus-spring-ai.version>
         <alibaba-cloud-ai.version>1.1.2.3</alibaba-cloud-ai.version>
         <model-ollama.version>1.1.2</model-ollama.version>
+        <redisson.version>3.22.0</redisson.version>
     </properties>
 
     <!-- 依赖版本管理（子工程直接引用，无需写版本） -->
@@ -69,6 +70,18 @@
                 <groupId>com.alibaba.cloud.ai</groupId>
                 <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
                <version>${alibaba-cloud-ai.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.alibaba.cloud.ai</groupId>
+                <artifactId>spring-ai-alibaba-agent-framework</artifactId>
+                <version>${alibaba-cloud-ai.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.alibaba.cloud.ai</groupId>
+                <artifactId>spring-ai-alibaba-graph-core</artifactId>
+                <version>${alibaba-cloud-ai.version}</version>
             </dependency>
 
             <dependency>
@@ -139,6 +152,11 @@
                 <version>${mysql-connector.version}</version>
             </dependency>
 
+            <dependency>
+                <groupId>org.redisson</groupId>
+                <artifactId>redisson</artifactId>
+                <version>${redisson.version}</version>
+            </dependency>
 
         </dependencies>
     </dependencyManagement>

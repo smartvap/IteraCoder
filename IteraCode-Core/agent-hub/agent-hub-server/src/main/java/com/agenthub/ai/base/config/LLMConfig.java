@@ -156,7 +156,7 @@ public class LLMConfig {
                 var msg = prompt.getInstructions().get(i);
                 log.info("[Ollama][{}]   msg[{}] type={} text={}", label, i,
                         msg.getMessageType(),
-                        msg.getText().length() > 500 ? msg.getText().substring(0, 500) + "..." : msg.getText());
+                        msg.getText().length() > 1000 ? msg.getText().substring(0, 1000) + "..." : msg.getText());
             }
             return delegate.call(prompt);
         }

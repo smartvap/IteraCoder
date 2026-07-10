@@ -16,22 +16,22 @@ spring:
         model: qwen3:4b
         temperature: 0.5
         max-tokens: 1024
-      - name: deepseek-v4-pro
+      - name: glm-5.1
         type: dashscope
-        model: deepseek-v4-pro
+        model: glm-5.1
         temperature: 0.7
         max-tokens: 4096
-      - name: qwen-max
+      - name: deepseek-v4-flash
         type: dashscope
-        model: qwen-max
+        model: deepseek-v4-flash
         temperature: 0.5
         max-tokens: 4096
-    primary: qwen3
+    primary: deepseek-v4-flash
 
   datasource:
     username: root
     password: 123456
-    url: jdbc:mysql://192.168.46.128:3306/ai_server?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
+    url: jdbc:mysql://192.168.46.131:3306/ai_server?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
     driver-class-name: com.mysql.cj.jdbc.Driver
     type: com.alibaba.druid.pool.DruidDataSource
   jpa:
@@ -40,7 +40,7 @@ spring:
         dialect: org.hibernate.dialect.MySQL8Dialect
   data:
     redis:
-      host: 192.168.46.128
+      host: 192.168.46.131
       port: 6379
       timeout: 10000ms
       lettuce:

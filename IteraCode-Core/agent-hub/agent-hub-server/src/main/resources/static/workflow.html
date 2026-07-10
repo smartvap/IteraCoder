@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能体研发工作流管理控制台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #f5f5f5;
+        }
+        h1 { text-align: center; color: #333; margin-bottom: 8px; }
+        .subtitle { text-align: center; color: #888; font-size: 13px; margin-bottom: 24px; }
+        .section {
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .section h2 { font-size: 16px; color: #333; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
+        .section h2 .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            font-size: 11px;
+            border-radius: 3px;
+            color: #fff;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        .badge.post { background: #28a745; }
+        .badge.get  { background: #007bff; }
+        .form-row { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; }
+        .form-row:last-child { margin-bottom: 0; }
+        label { font-size: 14px; color: #555; white-space: nowrap; min-width: 70px; text-align: right; }
+        input, textarea, select { flex: 1; padding: 8px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; }
+        textarea { resize: vertical; min-height: 70px; }
+        select { cursor: pointer; }
+        button {
+            padding: 10px 24px;
+            font-size: 14px;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            white-space: nowrap;
+        }
+        button.primary { background-color: #007bff; }
+        button.primary:hover { background-color: #0056b3; }
+        button.success { background-color: #28a745; }
+        button.success:hover { background-color: #1e7e34; }
+        button.warning { background-color: #ffc107; color: #333; }
+        button.warning:hover { background-color: #e0a800; }
+        button.danger  { background-color: #dc3545; }
+        button.danger:hover  { background-color: #bd2130; }
+        button.info    { background-color: #17a2b8; }
+        button.info:hover    { background-color: #117a8b; }
+        button:disabled { opacity: 0.55; cursor: not-allowed; }
+        .btn-row { display: flex; justify-content: flex-end; gap: 10px; }
+        .decision-group { display: flex; gap: 10px; }
+        #loading {
+            display: none;
+            margin: 16px auto;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .result-panel {
+            margin-top: 16px;
+            padding: 14px;
+            border-radius: 6px;
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            font-size: 13px;
+            line-height: 1.7;
+            display: none;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .result-panel.show { display: block; }
+        .result-panel.error { background: #fff5f5; border-color: #f5c6cb; }
+        .status-tag {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-RUNNING        { background: #cce5ff; color: #004085; }
+        .status-WAITING_REVIEW { background: #fff3cd; color: #856404; }
+        .status-COMPLETED      { background: #d4edda; color: #155724; }
+        .status-TERMINATED     { background: #f8d7da; color: #721c24; }
+        .status-FAILED         { background: #e2e3e5; color: #383d41; }
+        .kv-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        .kv-table th, .kv-table td {
+            text-align: left;
+            padding: 6px 10px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+            vertical-align: top;
+        }
+        .kv-table th { width: 180px; color: #555; font-weight: normal; }
+        .field-desc { display: block; font-size: 11px; color: #888; margin-top: 2px; font-weight: normal; }
+        .kv-table td { word-break: break-all; color: #333; }
+        .code-block {
+            background: #2d2d2d;
+            color: #e0e0e0;
+            padding: 12px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 240px;
+            overflow-y: auto;
+        }
+        .tip { font-size: 12px; color: #999; margin-top: 4px; }
+        .progress-panel {
+            display: none;
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .progress-panel.show { display: block; }
+        .progress-step {
+            display: flex;
+            align-items: center;
+            padding: 6px 0;
+            font-size: 13px;
+            color: #999;
+        }
+        .progress-step .step-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid #ccc;
+            margin-right: 10px;
+            flex-shrink: 0;
+            text-align: center;
+            line-height: 16px;
+            font-size: 10px;
+        }
+        .progress-step.done { color: #28a745; }
+        .progress-step.done .step-icon { background: #28a745; border-color: #28a745; color: #fff; }
+        .progress-step.active { color: #007bff; font-weight: bold; }
+        .progress-step.active .step-icon { border-color: #007bff; animation: pulse 1.5s infinite; }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(0,123,255,0.4); }
+            50%      { box-shadow: 0 0 0 6px rgba(0,123,255,0); }
+        }
+        .progress-step .step-time { margin-left: auto; font-size: 11px; color: #aaa; }
+        .approved-hint {
+            background: #d4edda;
+            color: #155724;
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-top: 14px;
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<h1>智能体研发工作流管理控制台</h1>
+<p class="subtitle">StateGraph + ReactAgent 智能体工作流：需求拆解 → 并行推理 → 人工审核</p>
+
+<!-- 1. 启动工作流 -->
+<div class="section">
+    <h2><span class="badge post">POST</span> 启动智能体研发工作流</h2>
+    <div class="form-row">
+        <label for="requirement">研发需求</label>
+        <textarea id="requirement" rows="3" placeholder="请输入原始研发需求，例如：开发一个java项目，实现pdf转word功能"></textarea>
+    </div>
+    <div class="btn-row">
+        <button class="primary" onclick="startWorkflow()">启动智能体工作流</button>
+    </div>
+    <div class="tip">提交后将执行需求拆解 → 并行推理，并在人工审核节点自动暂停</div>
+</div>
+
+<!-- 2. 人工审核恢复 -->
+<div class="section">
+    <h2><span class="badge post">POST</span> 人工审核恢复</h2>
+    <div class="form-row">
+        <label for="resumeThreadId">Thread ID</label>
+        <input type="text" id="resumeThreadId" placeholder="输入需要恢复的 threadId">
+    </div>
+    <div class="form-row">
+        <label for="comment">审核备注</label>
+        <input type="text" id="comment" placeholder="可选，审核备注说明">
+    </div>
+    <div class="btn-row decision-group">
+        <button id="btnApprove" class="success" onclick="resumeWorkflow('APPROVED')">通过 (APPROVED)</button>
+        <button id="btnSentBack" class="warning" onclick="resumeWorkflow('SENT_BACK')">驳回 (SENT_BACK)</button>
+        <button id="btnTerminate" class="danger"  onclick="resumeWorkflow('TERMINATED')">拒绝 (TERMINATED)</button>
+    </div>
+    <div class="tip">通过 → 审核通过，智能体工作流完成 | 驳回 → 回到需求拆解 | 拒绝 → 终止流程</div>
+    <div id="approvedHint" class="approved-hint" style="display:none;">进入代码生成中</div>
+</div>
+
+<!-- 加载 & 结果 -->
+<div id="loading"></div>
+<div id="progress" class="progress-panel">
+    <h2 style="font-size:16px;color:#333;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #eee;">
+        执行进度 <span id="progressThreadId" style="font-size:12px;color:#999;font-weight:normal;"></span>
+    </h2>
+    <div id="steps"></div>
+</div>
+<div id="result" class="result-panel"></div>
+
+<script>
+    const API_BASE = '/api/v1/workflow';
+    let pollTimer = null;
+    let lastDoneCount = -1;
+    let stuckCount = 0;
+    const STUCK_WARN = 150;
+    const STUCK_STOP = 300;
+
+    const WORKFLOW_STEPS = [
+        { key: 'requirement',               name: '智能体工作流初始化' },
+        { key: 'decomposition_result',      name: '需求拆解' },
+        { key: '_reasoning',                name: '并行推理' },
+        { key: 'parallel_reasoning_result', name: '合并推理结果' },
+        { key: '_review',                   name: '等待人工审核' },
+    ];
+
+    function nowStr() {
+        const d = new Date();
+        return d.getHours().toString().padStart(2,'0') + ':'
+             + d.getMinutes().toString().padStart(2,'0') + ':'
+             + d.getSeconds().toString().padStart(2,'0');
+    }
+
+    const FIELD_LABELS = {
+        'requirement':              '原始需求',
+        'workflow_status':          '智能体工作流状态',
+        'workflow_message':         '智能体工作流消息',
+        'decomposition_result':     '需求拆解结果',
+        'parallel_reasoning_result':'并行推理合并结果',
+        'review_content':           '审核内容',
+        'review_decision':          '审核决定',
+        'review_feedback':          '审核备注',
+        '_graph_execution_id_':     '智能体工作流实例ID',
+    };
+
+    function fieldLabel(key) {
+        if (FIELD_LABELS[key]) return FIELD_LABELS[key];
+        const match = key.match(/^reasoning_(.+?)_result$/);
+        if (match) return '推理结果 [' + match[1].replace(/_/g, '-') + ']';
+        return '';
+    }
+
+    function $(id) { return document.getElementById(id); }
+
+    function showLoading() { $('loading').style.display = 'block'; $('result').classList.remove('show', 'error'); }
+    function hideLoading() { $('loading').style.display = 'none'; }
+
+    function showResult(html, isError) {
+        hideLoading();
+        const panel = $('result');
+        panel.innerHTML = html;
+        panel.classList.add('show');
+        if (isError) panel.classList.add('error');
+        panel.scrollTop = 0;
+    }
+
+    function statusTag(status) {
+        return '<span class="status-tag status-' + status + '">' + status + '</span>';
+    }
+
+    function renderStateTable(state) {
+        if (!state || Object.keys(state).length === 0) return '';
+        let rows = '';
+        for (const [k, v] of Object.entries(state)) {
+            let displayVal = (v === null || v === undefined) ? '<em>null</em>' : String(v);
+            if (displayVal.length > 300) {
+                displayVal = '<div class="code-block">' + escapeHtml(displayVal) + '</div>';
+            } else {
+                displayVal = escapeHtml(displayVal);
+            }
+            const desc = fieldLabel(k);
+            const descHtml = desc ? '<span class="field-desc">' + desc + '</span>' : '';
+            rows += '<tr><th>' + escapeHtml(k) + descHtml + '</th><td>' + displayVal + '</td></tr>';
+        }
+        return '<table class="kv-table">' + rows + '</table>';
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function checkStepDone(state, step) {
+        if (step.key === '_review') {
+            if (state['workflow_status'] === 'WAITING_REVIEW') return true;
+            const d = state['review_decision'];
+            return d === 'APPROVED' || d === 'TERMINATED' || state['workflow_status'] === 'COMPLETED';
+        }
+        if (step.key === '_reasoning') {
+            for (const k of Object.keys(state)) {
+                if (/^reasoning_.+_result$/.test(k)) return true;
+            }
+            return false;
+        }
+        return state[step.key] != null;
+    }
+
+    function renderProgress(state) {
+        const stepsDiv = $('steps');
+        let html = '';
+        let foundActive = false;
+        for (const step of WORKFLOW_STEPS) {
+            const done = checkStepDone(state, step);
+            let cls = '';
+            if (done) { cls = 'done'; }
+            else if (!foundActive) { cls = 'active'; foundActive = true; }
+            const icon = done ? '\u2713' : (cls === 'active' ? '\u22EF' : '');
+            html += '<div class="progress-step ' + cls + '">'
+                + '<span class="step-icon">' + icon + '</span>'
+                + '<span>' + step.name + '</span>'
+                + '</div>';
+        }
+        stepsDiv.innerHTML = html;
+    }
+
+    function startPolling(threadId) {
+        stopPolling();
+        lastDoneCount = -1;
+        stuckCount = 0;
+        $('progress').classList.add('show');
+        $('progressThreadId').textContent = 'Thread: ' + threadId;
+        $('resumeThreadId').value = threadId;
+        renderProgress({});
+        pollState(threadId);
+    }
+
+    function stopPolling() {
+        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    }
+
+    function setResumeButtonsEnabled(enabled) {
+        ['btnApprove', 'btnSentBack', 'btnTerminate'].forEach(function(id) {
+            $(id).disabled = !enabled;
+        });
+    }
+
+    async function pollState(threadId) {
+        try {
+            const res = await fetch(API_BASE + '/state/' + encodeURIComponent(threadId));
+            const json = await res.json();
+            if (json.code === 0) {
+                const data = json.data;
+                const state = data.state || {};
+                renderProgress(state);
+
+                let doneCount = 0;
+                for (const step of WORKFLOW_STEPS) {
+                    if (checkStepDone(state, step)) doneCount++;
+                }
+                if (doneCount === lastDoneCount) { stuckCount++; }
+                else { lastDoneCount = doneCount; stuckCount = 0; }
+                const stuckHtml = (stuckCount >= STUCK_WARN)
+                    ? '<p style="color:#e67e22;margin-top:8px;font-size:13px;">\u26A0 步骤长时间无进展，可能节点异常（检查控制台日志）</p>'
+                    : '';
+
+                if (data.status === 'RUNNING') {
+                    if (stuckCount >= STUCK_STOP) {
+                        stopPolling();
+                        $('progress').classList.remove('show');
+                        showResult('<p style="color:red;">智能体工作流执行超时：进度约 10 分钟无变化，可能节点异常</p>' + renderResult(data), true);
+                    } else {
+                        $('steps').innerHTML += stuckHtml;
+                        pollTimer = setTimeout(() => pollState(threadId), 2000);
+                    }
+                } else {
+                    stopPolling();
+                    $('progress').classList.remove('show');
+
+                    // COMPLETED → 显示"进入代码生成中"
+                    if (data.status === 'COMPLETED') {
+                        $('approvedHint').style.display = 'block';
+                    }
+                    showResult(renderResult(data));
+                    if (data.status === 'WAITING_REVIEW') {
+                        $('resumeThreadId').value = threadId;
+                        setResumeButtonsEnabled(true);
+                    } else {
+                        setResumeButtonsEnabled(false);
+                    }
+                }
+            } else {
+                stopPolling();
+                showResult('<p style="color:red;">错误：' + escapeHtml(json.message || '未知错误') + '</p>', true);
+            }
+        } catch (err) {
+            stopPolling();
+            showResult('<p style="color:red;">请求失败：' + escapeHtml(err.message) + '</p>', true);
+        }
+    }
+
+    function renderResult(data) {
+        let html = '';
+        html += '<p><strong>Thread ID：</strong>' + escapeHtml(data.threadId || '-') + '</p>';
+        html += '<p><strong>状态：</strong>' + statusTag(data.status || '-') + '</p>';
+        html += '<p><strong>消息：</strong>' + escapeHtml(data.message || '-') + '</p>';
+        html += '<p><strong>是否暂停：</strong>' + (data.interrupted ? '是 (等待人工审核)' : '否') + '</p>';
+        if (data.interruptedNode) {
+            html += '<p><strong>暂停节点：</strong>' + escapeHtml(data.interruptedNode) + '</p>';
+        }
+        if (data.state) {
+            html += '<p style="margin-top:10px;"><strong>State 数据：</strong></p>';
+            html += renderStateTable(data.state);
+        }
+        return html;
+    }
+
+    async function startWorkflow() {
+        const requirement = $('requirement').value.trim();
+        if (!requirement) { alert('请输入研发需求'); return; }
+        hideLoading();
+        $('result').classList.remove('show', 'error');
+        $('approvedHint').style.display = 'none';
+        try {
+            const res = await fetch(API_BASE + '/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ requirement: requirement })
+            });
+            const json = await res.json();
+            if (json.code === 0 && json.data && json.data.threadId) {
+                startPolling(json.data.threadId);
+            } else {
+                showResult('<p style="color:red;">错误：' + escapeHtml(json.message || '未知错误') + '</p>', true);
+            }
+        } catch (err) {
+            showResult('<p style="color:red;">请求失败：' + escapeHtml(err.message) + '</p>', true);
+        }
+    }
+
+    async function resumeWorkflow(decision) {
+        const threadId = $('resumeThreadId').value.trim();
+        const comment = $('comment').value.trim();
+        if (!threadId) { alert('请输入 threadId'); return; }
+        hideLoading();
+        $('result').classList.remove('show', 'error');
+        $('approvedHint').style.display = 'none';
+        try {
+            const body = { threadId: threadId, reviewDecision: decision };
+            if (comment) body.comment = comment;
+
+            const res = await fetch(API_BASE + '/resume', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const json = await res.json();
+            if (json.code === 0) {
+                const d = json.data;
+                if (d.status === 'RUNNING') {
+                    startPolling(d.threadId);
+                } else if (d.status === 'COMPLETED') {
+                    $('approvedHint').style.display = 'block';
+                    setResumeButtonsEnabled(false);
+                    showResult(renderResult(d));
+                } else {
+                    showResult(renderResult(d));
+                }
+            } else {
+                showResult('<p style="color:red;">错误：' + escapeHtml(json.message || '未知错误') + '</p>', true);
+            }
+        } catch (err) {
+            showResult('<p style="color:red;">请求失败：' + escapeHtml(err.message) + '</p>', true);
+        }
+    }
+
+    setResumeButtonsEnabled(false);
+</script>
+</body>
+</html>
