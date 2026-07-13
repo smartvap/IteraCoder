@@ -57,6 +57,9 @@ public class RdWorkflowGraphConfig {
     @Value("${spring.data.redis.port:6379}")
     private int redisPort;
 
+    @Value("${spring.data.redis.password:}")
+    private String redisPassword;
+
     /** 需求拆解模型 */
     @Value("${agenthub.workflow.model-roles.decomposition:qwen3}")
     private String decompModelName;
@@ -84,7 +87,11 @@ public class RdWorkflowGraphConfig {
     @ConditionalOnProperty(name = "agenthub.workflow.saver-type", havingValue = "redis")
     public RedissonClient redissonClient() {
         Config config = new Config();
-        config.useSingleServer().setAddress("redis://" + redisHost + ":" + redisPort);
+        var serverConfig = config.useSingleServer()
+                .setAddress("redis://" + redisHost + ":" + redisPort);
+        if (redisPassword != null && !redisPassword.isBlank()) {
+            serverConfig.setPassword(redisPassword);
+        }
         return Redisson.create(config);
     }
 
