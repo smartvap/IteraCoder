@@ -23,4 +23,35 @@ public final class RdWorkflowKeys {
     public static final String REVIEW_FEEDBACK = "review_feedback";
 
     public static final int MAX_REPAIR_ITERATIONS = 5;
+
+    /**
+     * 判断拆解结果是否为非研发需求（三层兜底）。
+     * <p>
+     * 1. 标准标记：[NOT_DEV_REQ] 大小写不敏感匹配，且不含任务列表特征（防 LLM 误用）
+     * 2. 特征兜底：输出极短（&lt;80 字符）且不包含结构化内容（表格、标题、代码块）
+     */
+    public static boolean isNotDevReq(String decompositionResult) {
+        if (decompositionResult == null || decompositionResult.isBlank()) {
+            return false;
+        }
+        String upper = decompositionResult.strip().toUpperCase();
+        // 1. 标准标记匹配：包含 NOT_DEV_REQ 且无任务列表特征
+        //    防止 LLM 误在正常输出前加 [NOT_DEV_REQ]（如 "这是一个软件研发需求..."）
+        if (upper.contains("NOT_DEV_REQ")) {
+            boolean hasTaskFeatures = decompositionResult.contains("|") || decompositionResult.contains("###")
+                    || decompositionResult.length() > 200;
+            if (!hasTaskFeatures) {
+                return true;
+            }
+            // 有 NOT_DEV_REQ 但同时也像正常任务列表 → LLM 混淆，不拦截
+        }
+        // 2. 特征兜底：输出短且无结构化标记（表格 |、标题 #、代码块 ```）
+        if (decompositionResult.strip().length() < 80
+                && !decompositionResult.contains("|")
+                && !decompositionResult.contains("#")
+                && !decompositionResult.contains("```")) {
+            return true;
+        }
+        return false;
+    }
 }

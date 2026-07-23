@@ -2,11 +2,14 @@ package com.agenthub.ai.workflow.node;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
+import com.agenthub.ai.workflow.constant.RdWorkflowKeys;
+import com.agenthub.ai.workflow.event.WorkflowEventBus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.StreamingChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 
 import java.util.HashMap;
@@ -19,14 +22,28 @@ import java.util.Set;
  * Round 1 使用完整 skill 指令（含已解析的 {placeholder} 变量），
  * Rounds 2..N 以前一轮输出作为上下文继续推进，
  * 实现「聚焦式逐轮推进」的循环工程模式。
+ * <p>
+ * 每轮结束后通过 WorkflowEventBus 推送事件到 SSE 通道，前端可实时看到进度。
  */
 @Slf4j
 public class MultiRoundAgentNode implements NodeAction {
+
+    public static final String THREAD_ID_KEY = "_thread_id_";
 
     private final ChatModel chatModel;
     private final String instruction;
     private final int maxRounds;
     private final String outputKey;
+    private final WorkflowEventBus eventBus;
+
+    public MultiRoundAgentNode(ChatModel chatModel, String instruction,
+            int maxRounds, String outputKey, WorkflowEventBus eventBus) {
+        this.chatModel = chatModel;
+        this.instruction = instruction;
+        this.maxRounds = maxRounds;
+        this.outputKey = outputKey;
+        this.eventBus = eventBus;
+    }
 
     private static final Set<String> KNOWN_PLACEHOLDERS = Set.of(
             "requirement", "decomposition_result", "parallel_reasoning_result",
@@ -35,14 +52,6 @@ public class MultiRoundAgentNode implements NodeAction {
             "review_feedback", "workflow_message", "workflow_status",
             "current_data", "question_answer_context"
     );
-
-    public MultiRoundAgentNode(ChatModel chatModel, String instruction,
-            int maxRounds, String outputKey) {
-        this.chatModel = chatModel;
-        this.instruction = instruction;
-        this.maxRounds = maxRounds;
-        this.outputKey = outputKey;
-    }
 
     @Override
     public Map<String, Object> apply(OverAllState state) throws Exception {
@@ -63,31 +72,72 @@ public class MultiRoundAgentNode implements NodeAction {
                     return s.length() > 80 ? s.substring(0, 80) + "..." : s;
                 }).orElse("<MISSING>"));
 
+        // 并行推理节点启动时立即通知前端切换步骤
+        if (outputKey.startsWith("reasoning_")) {
+            pushEvent(state, "");
+        }
+
         StringBuilder allOutputs = new StringBuilder();
 
-        // Round 1: 完整指令调用
+        // Round 1: 流式调用
         log.info("MultiRoundAgent [{}] Round 1/{}", outputKey, maxRounds);
-        String prevOutput = chatModel.call(new Prompt(new UserMessage(fullInstruction)))
-                .getResult().getOutput().getText();
-        allOutputs.append(prevOutput);
+        String prevOutput = streamCall(new Prompt(new UserMessage(fullInstruction)), state, allOutputs);
 
-        // Rounds 2..N: 续推调用，携带实际任务数据 + 角色提醒 + 上一轮输出
-        for (int round = 2; round <= maxRounds; round++) {
+        // [NOT_DEV_REQ] 标记：非研发需求，立即终止不走后续轮次
+        if (RdWorkflowKeys.isNotDevReq(prevOutput)) {
+            log.info("MultiRoundAgent [{}] 检测到 [NOT_DEV_REQ]，跳过后续轮次", outputKey);
+        } else {
+            // Rounds 2..N: 续推流式调用
+            for (int round = 2; round <= maxRounds; round++) {
             log.info("MultiRoundAgent [{}] Round {}/{}", outputKey, round, maxRounds);
 
             String continuation = buildContinuationPrompt(round, maxRounds,
                     prevOutput, taskPrefix, resolvedInstruction);
-            String response = chatModel.call(new Prompt(new UserMessage(continuation)))
-                    .getResult().getOutput().getText();
+            allOutputs.append("\n\n");
+            pushEventDelta(state, "\n\n");
+            String response = streamCall(new Prompt(new UserMessage(continuation)), state, allOutputs);
 
             prevOutput = response;
-            allOutputs.append("\n\n").append(response);
+            }
         }
+
+        pushEvent(state, allOutputs.toString());
 
         Map<String, Object> result = new HashMap<>();
         result.put(outputKey, allOutputs.toString());
         // 显式透传 requirement，防止 StateGraph 框架在节点间序列化时丢失未显式写回的初始输入
-        state.value("requirement").ifPresent(v -> result.put("requirement", v));
+        state.value("requirement").ifPresent(v ->         result.put("requirement", v));
+        return result;
+    }
+
+    /**
+     * 流式调用 ChatModel，逐 token 追加到 buffer 并实时推送增量事件。
+     * 推送增量而非全量，避免代码生成后期每个事件携带 20K+ 字符导致浏览器渲染卡顿。
+     */
+    private String streamCall(Prompt prompt, OverAllState state, StringBuilder buffer) {
+        if (chatModel instanceof StreamingChatModel) {
+            StreamingChatModel streaming = (StreamingChatModel) chatModel;
+            streaming.stream(prompt)
+                    .doOnNext(chunk -> {
+                        String text = chunk.getResult() != null && chunk.getResult().getOutput() != null
+                                ? chunk.getResult().getOutput().getText() : "";
+                        if (!text.isEmpty()) {
+                            buffer.append(text);
+                            pushEventDelta(state, text);
+                            if (buffer.length() % 500 == 0 || buffer.length() < 20) {
+                                log.info("MultiRoundAgent [{}] 流式进度: {} 字符", outputKey, buffer.length());
+                            }
+                        }
+                    })
+                    .doOnComplete(() -> log.info("MultiRoundAgent [{}] 流式完成，总字符: {}", outputKey, buffer.length()))
+                    .blockLast();
+            // 清空增量节流缓存，推送本轮完整内容保证前端最终一致性
+            flushDelta(state);
+            return buffer.toString();
+        }
+        // 回退到阻塞调用
+        String result = chatModel.call(prompt).getResult().getOutput().getText();
+        buffer.append(result);
         return result;
     }
 
@@ -110,9 +160,8 @@ public class MultiRoundAgentNode implements NodeAction {
     }
 
     /**
-     * 构造防幻觉任务前置块。小模型容易被复杂指令模板误导而输出示例内容（如"在线商城"、
-     * "聊天机器人"等与真实需求无关的编造案例），此处将真实需求以最高优先级前置，
-     * 并要求模型先复述需求再分析，从机制上阻断幻觉。
+     * 极简任务前置块（Loops > Prompts 思想）。
+     * 不写长仪式 prompt，只提供事实数据，让模型靠多轮自查而非前置约束来保证质量。
      */
     private String buildTaskPrefix(OverAllState state) {
         String requirement = extractStateText(state, "requirement");
@@ -122,39 +171,16 @@ public class MultiRoundAgentNode implements NodeAction {
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("============================================================\n");
-        sb.append("  [防幻觉验证] 在开始任何分析之前，你必须先完成以下步骤：\n");
-        sb.append("------------------------------------------------------------\n");
-        sb.append("  步骤1：复述你理解的需求（1-2句话即可）\n");
-        sb.append("  步骤2：确认以下[真实需求]就是你要分析的唯一对象\n");
-        sb.append("  步骤3：开始执行下方指令模板\n");
-        sb.append("------------------------------------------------------------\n");
-        sb.append("\n");
-        sb.append("  >>> 真实需求（这是你需要分析的唯一任务对象）<<<\n");
-        sb.append("\n");
-        // 每行前加 > 前缀，将需求文本突出显示
-        for (String line : requirement.split("\n")) {
-            String display = line.length() > 60 ? line.substring(0, 60) : line;
-            sb.append("  > ").append(display).append("\n");
-        }
-        sb.append("\n");
-        sb.append("------------------------------------------------------------\n");
-        sb.append("  !!! 严禁事项：\n");
-        sb.append("  - 禁止分析\"在线商城\"、\"聊天机器人\"、\"注册登录\"等示例项目\n");
-        sb.append("  - 禁止输出\"由于需求不明确，我将以XX为例\"\n");
-        sb.append("  - 禁止把指令模板中的 [ ] 括号内容当作填空题\n");
-        sb.append("  - 你只能分析上面标注的真实需求\n");
-        sb.append("============================================================\n\n");
+        sb.append("【任务】\n");
+        sb.append(requirement).append("\n\n");
 
-        // 附加其他相关数据（不重复 requirement）
-        int extraData = 0;
-        extraData += appendStateValue(sb, state, "decomposition_result", "需求拆解结果");
-        extraData += appendStateValue(sb, state, "parallel_reasoning_result", "架构设计结果");
-        extraData += appendStateValue(sb, state, "generated_code", "当前代码");
-        extraData += appendStateValue(sb, state, "harness_result", "沙箱验证结果");
-        extraData += appendStateValue(sb, state, "review_feedback", "审核反馈意见");
-        extraData += appendStateValue(sb, state, "repair_count", "修复次数");
-        // 用 boolean 记录是否有额外数据，但不用它来返回空
+        // 附加引用数据
+        appendStateValue(sb, state, "decomposition_result", "需求拆解结果");
+        appendStateValue(sb, state, "parallel_reasoning_result", "架构设计结果");
+        appendStateValue(sb, state, "generated_code", "当前代码");
+        appendStateValue(sb, state, "harness_result", "沙箱验证结果");
+        appendStateValue(sb, state, "review_feedback", "审核反馈意见");
+        appendStateValue(sb, state, "repair_count", "修复次数");
         return sb.toString();
     }
 
@@ -188,31 +214,22 @@ public class MultiRoundAgentNode implements NodeAction {
     }
 
     /**
-     * 构建续推提示词：将实际任务数据前置 + 角色指令提醒 + 上一轮输出。
-     * <p>
-     * 关键改变：增加原始指令的简短摘要作为角色提醒，防止模型在后续轮次中
-     * 遗忘任务目标（如架构设计 Agent 滑向代码生成）。
+     * 构建续推提示词：只提供任务数据、角色摘要和上一轮输出，不做过度约束。
+     * 后续轮次的质量交给 Loop 自查，而非前置 prompt 仪式。
      */
     private String buildContinuationPrompt(int round, int maxRounds,
             String prevOutput, String taskPrefix, String instruction) {
-        // 截取指令前 150 字符作为角色提醒，避免全量模板分散小模型注意力
         String shortRole = instruction.length() > 150
                 ? instruction.substring(0, 150).replace("\n", " ") + "..."
                 : instruction.replace("\n", " ");
         return String.format("""
                 %s
-                【你的角色】（每轮都需牢记，勿偏离）：%s
+                你的角色：%s
 
-                【执行指令】继续完成你的任务，严格执行当前步骤。
-                【重要指令】你必须使用中文回答。禁止输出英文。
-
-                当前是第 %d/%d 轮。
-
-                上一轮输出：
+                第 %d/%d 轮。上一轮输出：
                 %s
 
-                请基于上述实际任务数据和上一轮输出，继续推进到下一阶段。
-                只输出当前轮次应该产出的内容，不要重复之前轮次已经完成的工作。
+                继续推进到下一阶段，不要重复已完成的步骤。
                 """, taskPrefix, shortRole, round, maxRounds, truncate(prevOutput, 4000));
     }
 
@@ -221,5 +238,54 @@ public class MultiRoundAgentNode implements NodeAction {
             return text;
         }
         return text.substring(0, maxLen) + "\n... [已截断]";
+    }
+
+    private void pushEvent(OverAllState state, String content) {
+        if (eventBus == null) return;
+        String threadId = state.value(THREAD_ID_KEY).map(Object::toString).orElse(null);
+        if (threadId == null) return;
+        eventBus.publish(threadId, outputKey, content, "RUNNING");
+    }
+
+    /**
+     * 推送增量事件：与 pushEvent 使用相同的 outputKey，
+     * 前端通过累积拼接实现流式渲染。
+     * 每 100ms 或累积满 300 字符推送一次，节流期间跳过的 delta 会被累积后一起推送。
+     */
+    private static class ThrottleState {
+        long lastPushTime;
+        final StringBuilder pending = new StringBuilder();
+    }
+    private final java.util.Map<String, ThrottleState> throttleMap = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private void pushEventDelta(OverAllState state, String delta) {
+        if (eventBus == null || delta == null || delta.isEmpty()) return;
+        String threadId = state.value(THREAD_ID_KEY).map(Object::toString).orElse(null);
+        if (threadId == null) return;
+
+        String throttleKey = threadId + "_" + outputKey;
+        ThrottleState ts = throttleMap.computeIfAbsent(throttleKey, k -> new ThrottleState());
+        ts.pending.append(delta);
+
+        long now = System.currentTimeMillis();
+        if (now - ts.lastPushTime > 50 || ts.pending.length() > 80) {
+            eventBus.publishDelta(threadId, outputKey, ts.pending.toString(), "RUNNING");
+            log.debug("MultiRoundAgent [{}] 推送增量: {} 字符, 间隔 {} ms",
+                    outputKey, ts.pending.length(), now - ts.lastPushTime);
+            ts.pending.setLength(0);
+            ts.lastPushTime = now;
+        }
+    }
+
+    private void flushDelta(OverAllState state) {
+        if (eventBus == null) return;
+        String threadId = state.value(THREAD_ID_KEY).map(Object::toString).orElse(null);
+        if (threadId == null) return;
+        String throttleKey = threadId + "_" + outputKey;
+        ThrottleState ts = throttleMap.remove(throttleKey);
+        // 推送最后一批残留的 pending delta
+        if (ts != null && ts.pending.length() > 0) {
+            eventBus.publishDelta(threadId, outputKey, ts.pending.toString(), "RUNNING");
+        }
     }
 }

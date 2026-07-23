@@ -12,7 +12,8 @@ description: 自动化研发智能体系统当前可用技能目录（阶段一�
 skills/
 ├── design/                     # 分析与设计技能
 │   ├── requirement-analysis.md  需求拆解
-│   └── architecture-design.md   架构设计推理
+│   ├── architecture-design.md   架构设计推理
+│   └── api-contract-design.md   API 契约设计推理
 └── skills-catalog.md            本目录文件
 ```
 
@@ -24,6 +25,7 @@ skills/
 |------|----------|----------|------|----------|--------|
 | 1 | requirement-analysis | 需求拆解智能体 | gemma2:2b | 4轮 | decomposition_result |
 | 2 | architecture-design | 架构设计推理智能体 | gemma2:2b/qwen3:4b | 5轮 | reasoning_result |
+| 3 | api-contract-design | API 契约设计推理智能体 | gemma2:2b/qwen3:4b | 5轮 | reasoning_result |
 
 ## 技能工作流
 
@@ -35,9 +37,14 @@ skills/
 │ [1. requirement-analysis] 需求拆解（多轮循环）         │
 └──────────┬───────────────────────────────────────────┘
            │
-           ▼
+      ┌────┴────┐
+      ▼         ▼
+   研发需求   非研发需求
+      │         │
+      ▼         ▼
 ┌──────────────────────────────────────────────────────┐
-│ [2. architecture-design] 多模型并行推理（多轮循环）    │
+│ [2. architecture-design] + [3. api-contract-design]   │
+│ 多模型并行推理（架构设计 + API 契约设计）              │
 └──────────┬───────────────────────────────────────────┘
            │
            ▼
@@ -56,10 +63,10 @@ APPROVED  SENT_BACK  TERMINATED
 
 | 分类 | 目录 | 技能 |
 |------|------|------|
-| 分析与设计 | skills/design/ | requirement-analysis, architecture-design |
+| 分析与设计 | skills/design/ | requirement-analysis, architecture-design, api-contract-design |
 
 ### 按任务类型选择
 
 | 任务类型 | 技能链 |
 |----------|--------|
-| 需求拆解与评审 | requirement-analysis → architecture-design → 人工审核 |
+| 需求拆解与评审 | requirement-analysis → architecture-design + api-contract-design → 人工审核 |

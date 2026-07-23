@@ -20,13 +20,13 @@ spring:
         type: dashscope
         model: glm-5.1
         temperature: 0.7
-        max-tokens: 4096
-      - name: deepseek-v4-flash
+        max-tokens: 8192
+      - name: glm-5.2
         type: dashscope
-        model: deepseek-v4-flash
+        model: glm-5.2
         temperature: 0.5
-        max-tokens: 4096
-    primary: deepseek-v4-flash
+        max-tokens: 8192
+    primary: qwen3
 
   datasource:
     username: root

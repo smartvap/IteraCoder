@@ -1,6 +1,7 @@
 package com.agenthub.ai.workflow.config;
 
 import com.agenthub.ai.workflow.node.*;
+import com.agenthub.ai.workflow.event.WorkflowEventBus;
 import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.KeyStrategy;
@@ -40,7 +41,7 @@ import static com.alibaba.cloud.ai.graph.action.AsyncEdgeAction.edge_async;
 import static com.alibaba.cloud.ai.graph.action.AsyncNodeAction.node_async;
 
 /**
- * 研发智能体工作流图配置（阶段一：需求拆解 → 多模型并行推理 → 人工审核）
+ * 智能体研发工作流图配置（阶段一：需求拆解 → 多模型并行推理 → 人工审核）
  */
 @Slf4j
 @Configuration
@@ -60,11 +61,9 @@ public class RdWorkflowGraphConfig {
     @Value("${spring.data.redis.password:}")
     private String redisPassword;
 
-    /** 需求拆解模型 */
     @Value("${agenthub.workflow.model-roles.decomposition:qwen3}")
     private String decompModelName;
 
-    /** 推理模型名列表（逗号分隔） */
     @Value("${agenthub.workflow.reasoning-models:gemma2,qwen3}")
     private String reasoningModelNamesStr;
 
@@ -75,14 +74,12 @@ public class RdWorkflowGraphConfig {
                 .toList();
     }
 
-    /** StateSerializer */
     @Bean
     public StateSerializer stateSerializer() {
         AgentStateFactory<OverAllState> stateFactory = OverAllState::new;
         return new SpringAIJacksonStateSerializer(stateFactory);
     }
 
-    /** RedissonClient，仅 Redis 模式时创建 */
     @Bean
     @ConditionalOnProperty(name = "agenthub.workflow.saver-type", havingValue = "redis")
     public RedissonClient redissonClient() {
@@ -116,14 +113,10 @@ public class RdWorkflowGraphConfig {
     private ChatModel getOrFallback(Map<String, ChatModel> chatModels, String modelName) {
         String beanName = modelName + "ChatModel";
         ChatModel model = chatModels.get(beanName);
-        if (model != null) {
-            return model;
-        }
+        if (model != null) return model;
         log.warn("模型 '{}'（Bean: {}）未在上下文中找到，回退到主模型", modelName, beanName);
         model = chatModels.values().stream().findFirst().orElse(null);
-        if (model == null) {
-            throw new IllegalStateException("没有可用的 ChatModel Bean，请检查 spring.ai.models 配置");
-        }
+        if (model == null) throw new IllegalStateException("没有可用的 ChatModel Bean，请检查 spring.ai.models 配置");
         return model;
     }
 
@@ -135,14 +128,15 @@ public class RdWorkflowGraphConfig {
     public CompiledGraph rdWorkflowCompiledGraph(
             Map<String, ChatModel> chatModels,
             BaseCheckpointSaver rdWorkflowSaver,
-            SkillLoader skillLoader) throws GraphStateException {
+            SkillLoader skillLoader,
+            WorkflowEventBus eventBus) throws GraphStateException {
 
         ChatModel decompModel = getOrFallback(chatModels, decompModelName);
 
-        // ===== 1. 需求拆解智能体 =====
-        String decompositionInstruction = skillLoader.getInstruction("requirement-analysis");
-        if (decompositionInstruction.isBlank()) {
-            decompositionInstruction = """
+        // 1. 需求拆解智能体
+        String decompInstruction = skillLoader.getInstruction("requirement-analysis");
+        if (decompInstruction.isBlank()) {
+            decompInstruction = """
                     你是需求拆解智能体。将以下研发需求拆解为可执行的子任务列表。
                     输出格式：子任务编号、描述、优先级、建议使用的模型类型。
 
@@ -152,40 +146,51 @@ public class RdWorkflowGraphConfig {
         ReactAgent decompositionAgent = ReactAgent.builder()
                 .name("requirement_decomposition")
                 .model(decompModel)
-                .instruction(decompositionInstruction)
+                .instruction(decompInstruction)
                 .outputKey(RdWorkflowKeys.DECOMPOSITION_RESULT)
                 .enableLogging(true)
                 .build();
 
-        // ===== 2. 多模型并行推理智能体 =====
-        String architectureInstruction = skillLoader.getInstruction("architecture-design");
-        if (architectureInstruction.isBlank()) {
-            architectureInstruction = """
-                    你是架构设计专家。基于以下任务拆解结果，输出技术方案推理与设计要点。
+        // 2. 多模型并行推理（架构设计 + API 契约设计）
+        String archInstruction = skillLoader.getInstruction("architecture-design");
+        if (archInstruction.isBlank()) {
+            archInstruction = """
+                    你是架构设计专家。基于以下任务拆解结果，输出技术栈、模块划分和数据模型设计。
+                    拆解结果：{decomposition_result}
+                    """;
+        }
+        String apiInstruction = skillLoader.getInstruction("api-contract-design");
+        if (apiInstruction.isBlank()) {
+            apiInstruction = """
+                    你是 API 设计专家。基于以下任务拆解结果，输出接口契约和业务流程设计。
                     拆解结果：{decomposition_result}
                     """;
         }
 
         List<ReactAgent> reasoningAgents = new ArrayList<>();
-        for (String modelName : getReasoningModelNames()) {
-            String trimmed = modelName.trim();
-            ChatModel cm = getOrFallback(chatModels, trimmed);
-            String key = toAgentKey(trimmed);
+        List<String> modelNames = getReasoningModelNames();
+        for (int i = 0; i < modelNames.size(); i++) {
+            String modelName = modelNames.get(i).trim();
+            ChatModel cm = getOrFallback(chatModels, modelName);
+            String key = toAgentKey(modelName);
+            String instruction = (i == 0) ? archInstruction : apiInstruction;
             ReactAgent agent = ReactAgent.builder()
                     .name(key)
                     .model(cm)
-                    .instruction(architectureInstruction)
+                    .instruction(instruction)
                     .outputKey(key + "_result")
                     .build();
             reasoningAgents.add(agent);
-            log.info("注册并行推理 Agent: name={}, model={}", key, trimmed);
+            log.info("注册并行推理 Agent: name={}, model={}, skill={}",
+                    key, modelName, (i == 0) ? "architecture-design" : "api-contract-design");
         }
 
-        // ===== KeyStrategy =====
+        // KeyStrategy
         KeyStrategyFactory keyStrategyFactory = () -> {
             HashMap<String, KeyStrategy> strategies = new HashMap<>();
             strategies.put(RdWorkflowKeys.REQUIREMENT, new ReplaceStrategy());
             strategies.put(RdWorkflowKeys.DECOMPOSITION_RESULT, new ReplaceStrategy());
+            strategies.put(MultiRoundAgentNode.THREAD_ID_KEY, new ReplaceStrategy());
             for (String modelName : getReasoningModelNames()) {
                 strategies.put(toAgentKey(modelName) + "_result", new ReplaceStrategy());
             }
@@ -200,55 +205,64 @@ public class RdWorkflowGraphConfig {
 
         StateGraph workflow = new StateGraph(keyStrategyFactory);
 
-        // ===== 添加节点 =====
-        workflow.addNode("workflow_init", node_async(new WorkflowInitNode()));
-        workflow.addNode(MANUAL_REVIEW_NODE, node_async(new ManualReviewNode()));
-        workflow.addNode("merge_parallel_results", node_async(new ParallelResultMergeNode(getReasoningModelNames())));
+        // 节点注册
+        workflow.addNode("workflow_init", node_async(new WorkflowInitNode(eventBus)));
+        workflow.addNode(MANUAL_REVIEW_NODE, node_async(new ManualReviewNode(eventBus, decompModel)));
+        workflow.addNode("merge_parallel_results",
+                node_async(new ParallelResultMergeNode(getReasoningModelNames(), decompModel, eventBus)));
+        workflow.addNode("decomposition_gate", node_async(new DecompositionGateNode(eventBus)));
 
         // 需求拆解 Agent
         int decompRounds = skillLoader.getMetadata("requirement-analysis") != null
                 ? skillLoader.getMetadata("requirement-analysis").getMaxRounds() : 0;
-        if (decompRounds > 1) {
-            log.info("Skill [requirement-analysis] 使用多轮循环模式: {} rounds", decompRounds);
-            workflow.addNode(decompositionAgent.name(),
-                    node_async(new MultiRoundAgentNode(decompModel, decompositionInstruction,
-                            decompRounds, RdWorkflowKeys.DECOMPOSITION_RESULT)));
-        } else {
-            workflow.addNode(decompositionAgent.name(), decompositionAgent.asNode(true, false));
-        }
+        int effectiveDecomp = Math.max(decompRounds, 1);
+        workflow.addNode(decompositionAgent.name(),
+                node_async(new MultiRoundAgentNode(decompModel, decompInstruction,
+                        effectiveDecomp, RdWorkflowKeys.DECOMPOSITION_RESULT, eventBus)));
 
         // 并行推理 Agent
         int archRounds = skillLoader.getMetadata("architecture-design") != null
                 ? skillLoader.getMetadata("architecture-design").getMaxRounds() : 0;
-        if (archRounds > 1) {
-            log.info("Skill [architecture-design] 使用多轮循环模式: {} rounds", archRounds);
-            for (int i = 0; i < getReasoningModelNames().size(); i++) {
-                String modelName = getReasoningModelNames().get(i).trim();
-                ChatModel cm = getOrFallback(chatModels, modelName);
-                ReactAgent agent = reasoningAgents.get(i);
-                workflow.addNode(agent.name(),
-                        node_async(new MultiRoundAgentNode(cm, architectureInstruction,
-                                archRounds, toAgentKey(modelName) + "_result")));
-            }
-        } else {
-            for (ReactAgent agent : reasoningAgents) {
-                workflow.addNode(agent.name(), agent.asNode(true, false));
-            }
+        int apiRounds = skillLoader.getMetadata("api-contract-design") != null
+                ? skillLoader.getMetadata("api-contract-design").getMaxRounds() : 0;
+        for (int i = 0; i < reasoningAgents.size(); i++) {
+            ReactAgent agent = reasoningAgents.get(i);
+            int rounds = (i == 0) ? archRounds : apiRounds;
+            String instruction = (i == 0) ? archInstruction : apiInstruction;
+            String modelName = modelNames.get(i).trim();
+            ChatModel cm = getOrFallback(chatModels, modelName);
+            int effectiveRounds = Math.max(rounds, 1);
+            log.info("Skill [{}] MultiRoundAgentNode: {} rounds, model={}",
+                    (i == 0) ? "architecture-design" : "api-contract-design", effectiveRounds, modelName);
+            workflow.addNode(agent.name(),
+                    node_async(new MultiRoundAgentNode(cm, instruction,
+                            effectiveRounds, toAgentKey(modelName) + "_result", eventBus)));
         }
 
-        // ===== 主流程 =====
+        // ==== 主流程（截断到人工审核）====
         workflow.addEdge(StateGraph.START, "workflow_init");
         workflow.addEdge("workflow_init", decompositionAgent.name());
-        // 多模型并行推理：同一源节点扇出
+
+        // 拆解门控：非研发需求直接终止
+        workflow.addConditionalEdges(
+                decompositionAgent.name(),
+                edge_async(state -> {
+                    String result = state.value(RdWorkflowKeys.DECOMPOSITION_RESULT, "").toString();
+                    return RdWorkflowKeys.isNotDevReq(result) ? "not_dev_req" : "proceed";
+                }),
+                Map.of("not_dev_req", StateGraph.END, "proceed", "decomposition_gate")
+        );
+
+        // 并行推理扇出
         for (ReactAgent agent : reasoningAgents) {
-            workflow.addEdge(decompositionAgent.name(), agent.name());
+            workflow.addEdge("decomposition_gate", agent.name());
         }
         for (ReactAgent agent : reasoningAgents) {
             workflow.addEdge(agent.name(), "merge_parallel_results");
         }
         workflow.addEdge("merge_parallel_results", MANUAL_REVIEW_NODE);
 
-        // ===== 人工审核条件分支 =====
+        // 人工审核条件分支：APPROVED/SENT_BACK/TERMINATED → 全部不进入后续阶段
         workflow.addConditionalEdges(
                 MANUAL_REVIEW_NODE,
                 edge_async(state -> {
@@ -273,7 +287,7 @@ public class RdWorkflowGraphConfig {
                 .build();
 
         CompiledGraph compiledGraph = workflow.compile(compileConfig);
-        log.info("研发工作流 StateGraph 编译完成（阶段一：人工审核，推理模型数: {}）", getReasoningModelNames().size());
+        log.info("智能体研发工作流 StateGraph 编译完成（阶段一：人工审核，推理模型数: {}）", getReasoningModelNames().size());
         return compiledGraph;
     }
 }

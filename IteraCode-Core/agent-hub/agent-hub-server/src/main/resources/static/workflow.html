@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>智能体研发工作流管理控制台</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
             font-family: Arial, sans-serif;
             padding: 20px;
@@ -13,8 +18,20 @@
             margin: 0 auto;
             background-color: #f5f5f5;
         }
-        h1 { text-align: center; color: #333; margin-bottom: 8px; }
-        .subtitle { text-align: center; color: #888; font-size: 13px; margin-bottom: 24px; }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            font-size: 13px;
+            margin-bottom: 24px;
+        }
+
         .section {
             background: #fff;
             border-radius: 8px;
@@ -22,7 +39,15 @@
             margin-bottom: 20px;
             box-shadow: 0 1px 4px rgba(0,0,0,0.08);
         }
-        .section h2 { font-size: 16px; color: #333; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
+
+        .section h2 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
         .section h2 .badge {
             display: inline-block;
             padding: 2px 8px;
@@ -34,12 +59,44 @@
         }
         .badge.post { background: #28a745; }
         .badge.get  { background: #007bff; }
-        .form-row { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; }
-        .form-row:last-child { margin-bottom: 0; }
-        label { font-size: 14px; color: #555; white-space: nowrap; min-width: 70px; text-align: right; }
-        input, textarea, select { flex: 1; padding: 8px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; }
-        textarea { resize: vertical; min-height: 70px; }
-        select { cursor: pointer; }
+
+        .form-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+            align-items: center;
+        }
+
+        .form-row:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            font-size: 14px;
+            color: #555;
+            white-space: nowrap;
+            min-width: 70px;
+            text-align: right;
+        }
+
+        input, textarea, select {
+            flex: 1;
+            padding: 8px 12px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: inherit;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 70px;
+        }
+
+        select {
+            cursor: pointer;
+        }
+
         button {
             padding: 10px 24px;
             font-size: 14px;
@@ -50,6 +107,7 @@
             transition: background-color 0.3s;
             white-space: nowrap;
         }
+
         button.primary { background-color: #007bff; }
         button.primary:hover { background-color: #0056b3; }
         button.success { background-color: #28a745; }
@@ -60,9 +118,24 @@
         button.danger:hover  { background-color: #bd2130; }
         button.info    { background-color: #17a2b8; }
         button.info:hover    { background-color: #117a8b; }
-        button:disabled { opacity: 0.55; cursor: not-allowed; }
-        .btn-row { display: flex; justify-content: flex-end; gap: 10px; }
-        .decision-group { display: flex; gap: 10px; }
+
+        button:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
+        .btn-row {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        /* 审核决策按钮组 */
+        .decision-group {
+            display: flex;
+            gap: 10px;
+        }
+
         #loading {
             display: none;
             margin: 16px auto;
@@ -73,7 +146,12 @@
             height: 40px;
             animation: spin 2s linear infinite;
         }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
         .result-panel {
             margin-top: 16px;
             padding: 14px;
@@ -86,8 +164,16 @@
             max-height: 500px;
             overflow-y: auto;
         }
-        .result-panel.show { display: block; }
-        .result-panel.error { background: #fff5f5; border-color: #f5c6cb; }
+
+        .result-panel.show {
+            display: block;
+        }
+
+        .result-panel.error {
+            background: #fff5f5;
+            border-color: #f5c6cb;
+        }
+
         .status-tag {
             display: inline-block;
             padding: 2px 10px;
@@ -100,7 +186,12 @@
         .status-COMPLETED      { background: #d4edda; color: #155724; }
         .status-TERMINATED     { background: #f8d7da; color: #721c24; }
         .status-FAILED         { background: #e2e3e5; color: #383d41; }
-        .kv-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+
+        .kv-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+        }
         .kv-table th, .kv-table td {
             text-align: left;
             padding: 6px 10px;
@@ -108,9 +199,23 @@
             font-size: 13px;
             vertical-align: top;
         }
-        .kv-table th { width: 180px; color: #555; font-weight: normal; }
-        .field-desc { display: block; font-size: 11px; color: #888; margin-top: 2px; font-weight: normal; }
-        .kv-table td { word-break: break-all; color: #333; }
+        .kv-table th {
+            width: 180px;
+            color: #555;
+            font-weight: normal;
+        }
+        .field-desc {
+            display: block;
+            font-size: 11px;
+            color: #888;
+            margin-top: 2px;
+            font-weight: normal;
+        }
+        .kv-table td {
+            word-break: break-all;
+            color: #333;
+        }
+
         .code-block {
             background: #2d2d2d;
             color: #e0e0e0;
@@ -124,7 +229,14 @@
             max-height: 240px;
             overflow-y: auto;
         }
-        .tip { font-size: 12px; color: #999; margin-top: 4px; }
+
+        .tip {
+            font-size: 12px;
+            color: #999;
+            margin-top: 4px;
+        }
+
+        /* 进度面板 */
         .progress-panel {
             display: none;
             background: #fff;
@@ -133,7 +245,9 @@
             margin-bottom: 20px;
             box-shadow: 0 1px 4px rgba(0,0,0,0.08);
         }
-        .progress-panel.show { display: block; }
+        .progress-panel.show {
+            display: block;
+        }
         .progress-step {
             display: flex;
             align-items: center;
@@ -160,16 +274,34 @@
             0%, 100% { box-shadow: 0 0 0 0 rgba(0,123,255,0.4); }
             50%      { box-shadow: 0 0 0 6px rgba(0,123,255,0); }
         }
-        .progress-step .step-time { margin-left: auto; font-size: 11px; color: #aaa; }
-        .approved-hint {
-            background: #d4edda;
-            color: #155724;
-            padding: 12px 16px;
-            border-radius: 6px;
-            margin-top: 14px;
-            font-size: 14px;
-            font-weight: bold;
-            text-align: center;
+        @keyframes dotPulse {
+            0%, 20%  { opacity: 0.2; }
+            50%      { opacity: 1; }
+            80%, 100% { opacity: 0.2; }
+        }
+        .thinking-dot {
+            animation: dotPulse 1.2s infinite;
+        }
+        .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+        .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+        .progress-step .step-time {
+            margin-left: auto;
+            font-size: 11px;
+            color: #aaa;
+        }
+        .step-body {
+            margin-left: 30px;
+            margin-top: 4px;
+            padding: 6px 10px;
+            background: #f8f9fa;
+            border-left: 2px solid #e0e0e0;
+            font-size: 12px;
+            color: #555;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 300px;
+            overflow-y: auto;
+            border-radius: 0 4px 4px 0;
         }
     </style>
 </head>
@@ -177,7 +309,7 @@
 <h1>智能体研发工作流管理控制台</h1>
 <p class="subtitle">StateGraph + ReactAgent 智能体工作流：需求拆解 → 并行推理 → 人工审核</p>
 
-<!-- 1. 启动工作流 -->
+<!-- ==================== 1. 启动工作流 ==================== -->
 <div class="section">
     <h2><span class="badge post">POST</span> 启动智能体研发工作流</h2>
     <div class="form-row">
@@ -190,25 +322,7 @@
     <div class="tip">提交后将执行需求拆解 → 并行推理，并在人工审核节点自动暂停</div>
 </div>
 
-<!-- 2. 人工审核恢复 -->
-<div class="section">
-    <h2><span class="badge post">POST</span> 人工审核恢复</h2>
-    <div class="form-row">
-        <label for="resumeThreadId">Thread ID</label>
-        <input type="text" id="resumeThreadId" placeholder="输入需要恢复的 threadId">
-    </div>
-    <div class="form-row">
-        <label for="comment">审核备注</label>
-        <input type="text" id="comment" placeholder="可选，审核备注说明">
-    </div>
-    <div class="btn-row decision-group">
-        <button id="btnApprove" class="success" onclick="resumeWorkflow('APPROVED')">通过 (APPROVED)</button>
-        <button id="btnSentBack" class="warning" onclick="resumeWorkflow('SENT_BACK')">驳回 (SENT_BACK)</button>
-        <button id="btnTerminate" class="danger"  onclick="resumeWorkflow('TERMINATED')">拒绝 (TERMINATED)</button>
-    </div>
-    <div class="tip">通过 → 审核通过，智能体工作流完成 | 驳回 → 回到需求拆解 | 拒绝 → 终止流程</div>
-    <div id="approvedHint" class="approved-hint" style="display:none;">进入代码生成中</div>
-</div>
+<input type="hidden" id="resumeThreadId">
 
 <!-- 加载 & 结果 -->
 <div id="loading"></div>
@@ -217,17 +331,35 @@
         执行进度 <span id="progressThreadId" style="font-size:12px;color:#999;font-weight:normal;"></span>
     </h2>
     <div id="steps"></div>
+    <!-- 审核操作区域（固定展示，按钮可用性由 setResumeButtonsEnabled 控制） -->
+    <div id="reviewSection" style="display:block;margin-top:16px;padding-top:16px;border-top:2px solid #ffc107;border-radius:4px;">
+        <div style="background:#fff3cd;padding:12px;border-radius:6px;margin-bottom:12px;">
+            <strong style="color:#856404;">⏸ 等待人工审核</strong>
+            <span style="color:#856404;font-size:12px;margin-left:8px;">请审核以上推理结果后选择操作</span>
+        </div>
+        <div class="form-row">
+            <label for="comment">审核备注</label>
+            <input type="text" id="comment" placeholder="可选，审核备注说明">
+        </div>
+        <div class="btn-row decision-group">
+            <button id="btnApprove" class="success" onclick="resumeWorkflow('APPROVED')">✓ 通过 (APPROVED)</button>
+            <button id="btnSentBack" class="warning" onclick="resumeWorkflow('SENT_BACK')">↩ 驳回 (SENT_BACK)</button>
+            <button id="btnTerminate" class="danger"  onclick="resumeWorkflow('TERMINATED')">✗ 拒绝 (TERMINATED)</button>
+        </div>
+        <div class="tip">通过 → 审核通过，智能体工作流完成 | 驳回 → 回到需求拆解 | 拒绝 → 终止流程</div>
+    </div>
+    <!-- 终态信息区域（COMPLETED / TERMINATED / FAILED 时显示） -->
+    <div id="finalStatus" style="display:none;margin-top:16px;padding:12px;border-radius:6px;"></div>
 </div>
 <div id="result" class="result-panel"></div>
 
 <script>
     const API_BASE = '/api/v1/workflow';
-    let pollTimer = null;
-    let lastDoneCount = -1;
-    let stuckCount = 0;
-    const STUCK_WARN = 150;
-    const STUCK_STOP = 300;
+    let es = null; // EventSource
+    let pollFallback = null; // SSE 无事件时的后台轮询
+    let pollDelayTimer = null; // 轮询延迟启动定时器
 
+    // 工作流步骤定义
     const WORKFLOW_STEPS = [
         { key: 'requirement',               name: '智能体工作流初始化' },
         { key: 'decomposition_result',      name: '需求拆解' },
@@ -243,29 +375,40 @@
              + d.getSeconds().toString().padStart(2,'0');
     }
 
+    // State 字段中文描述映射
     const FIELD_LABELS = {
-        'requirement':              '原始需求',
-        'workflow_status':          '智能体工作流状态',
-        'workflow_message':         '智能体工作流消息',
-        'decomposition_result':     '需求拆解结果',
-        'parallel_reasoning_result':'并行推理合并结果',
-        'review_content':           '审核内容',
-        'review_decision':          '审核决定',
-        'review_feedback':          '审核备注',
-        '_graph_execution_id_':     '智能体工作流实例ID',
+        'requirement':                          '原始需求',
+        'workflow_status':                      '工作流状态',
+        'workflow_message':                     '工作流消息',
+        'decomposition_result':                 '需求拆解结果',
+        'parallel_reasoning_result':            '并行推理合并结果',
+        'review_content':                       '审核内容',
+        'review_decision':                      '审核决定（APPROVED/驳回）',
+        'review_feedback':                      '审核备注/驳回原因',
+        'repair_count':                         '修复次数',
+        '_graph_execution_id_':                 '工作流实例ID',
     };
 
+    // 动态 key 中文描述（reasoning_*_result）
     function fieldLabel(key) {
         if (FIELD_LABELS[key]) return FIELD_LABELS[key];
         const match = key.match(/^reasoning_(.+?)_result$/);
-        if (match) return '推理结果 [' + match[1].replace(/_/g, '-') + ']';
+        if (match) {
+            return '推理结果 [' + match[1].replace(/_/g, '-') + ']';
+        }
         return '';
     }
 
     function $(id) { return document.getElementById(id); }
 
-    function showLoading() { $('loading').style.display = 'block'; $('result').classList.remove('show', 'error'); }
-    function hideLoading() { $('loading').style.display = 'none'; }
+    function showLoading() {
+        $('loading').style.display = 'block';
+        $('result').classList.remove('show', 'error');
+    }
+
+    function hideLoading() {
+        $('loading').style.display = 'none';
+    }
 
     function showResult(html, isError) {
         hideLoading();
@@ -277,7 +420,7 @@
     }
 
     function statusTag(status) {
-        return '<span class="status-tag status-' + status + '">' + status + '</span>';
+        return `<span class="status-tag status-${status}">${status}</span>`;
     }
 
     function renderStateTable(state) {
@@ -292,9 +435,9 @@
             }
             const desc = fieldLabel(k);
             const descHtml = desc ? '<span class="field-desc">' + desc + '</span>' : '';
-            rows += '<tr><th>' + escapeHtml(k) + descHtml + '</th><td>' + displayVal + '</td></tr>';
+            rows += `<tr><th>${escapeHtml(k)}${descHtml}</th><td>${displayVal}</td></tr>`;
         }
-        return '<table class="kv-table">' + rows + '</table>';
+        return `<table class="kv-table">${rows}</table>`;
     }
 
     function escapeHtml(str) {
@@ -303,112 +446,464 @@
         return div.innerHTML;
     }
 
+    // ===== 进度面板 =====
     function checkStepDone(state, step) {
         if (step.key === '_review') {
             if (state['workflow_status'] === 'WAITING_REVIEW') return true;
             const d = state['review_decision'];
-            return d === 'APPROVED' || d === 'TERMINATED' || state['workflow_status'] === 'COMPLETED';
+            return d === 'APPROVED' || d === 'TERMINATED';
+        }
+        if (step.key === 'requirement') {
+            return !!(state['workflow_message'] || state['decomposition_result']);
+        }
+        if (step.key === 'decomposition_result') {
+            // 自身内容足够即完成，不等下游；[NOT_DEV_REQ] 标记也视为完成
+            const dr = state['decomposition_result'];
+            if (dr && typeof dr === 'string' && dr.startsWith('[NOT_DEV_REQ]')) {
+                return true;
+            }
+            return dr && dr.length > 200;
         }
         if (step.key === '_reasoning') {
-            for (const k of Object.keys(state)) {
-                if (/^reasoning_.+_result$/.test(k)) return true;
-            }
-            return false;
+            return !!state['parallel_reasoning_result'];
+        }
+        if (step.key === 'parallel_reasoning_result') {
+            return state['workflow_status'] === 'WAITING_REVIEW' || !!state['review_content'];
         }
         return state[step.key] != null;
     }
 
-    function renderProgress(state) {
-        const stepsDiv = $('steps');
-        let html = '';
-        let foundActive = false;
-        for (const step of WORKFLOW_STEPS) {
-            const done = checkStepDone(state, step);
-            let cls = '';
-            if (done) { cls = 'done'; }
-            else if (!foundActive) { cls = 'active'; foundActive = true; }
-            const icon = done ? '\u2713' : (cls === 'active' ? '\u22EF' : '');
-            html += '<div class="progress-step ' + cls + '">'
-                + '<span class="step-icon">' + icon + '</span>'
-                + '<span>' + step.name + '</span>'
-                + '</div>';
-        }
-        stepsDiv.innerHTML = html;
+    /** SSE 事件键是否匹配进度步骤键 */
+    function stepKeyMatches(stepKey, sseKey) {
+        if (stepKey === sseKey) return true;
+        if (stepKey === '_reasoning' && /^reasoning_.+_result$/.test(sseKey)) return true;
+        if (stepKey === '_review' && (sseKey === 'review_decision' || sseKey === 'review_content' || sseKey === 'workflow_status')) return true;
+        return false;
     }
 
-    function startPolling(threadId) {
-        stopPolling();
-        lastDoneCount = -1;
-        stuckCount = 0;
+    function getStepContent(state, step) {
+        // 根据步骤 key 映射到 State 中的具体字段
+        const key = step.key;
+        if (key === 'requirement') {
+            // 工作流初始化：展示研发需求 + 审核备注（如果有）
+            const req = state['requirement'];
+            if (!req || !req.trim()) return ''; // 无实际数据时显示"思考中..."
+            let content = '【研发需求】\n' + req;
+            const feedback = state['review_feedback'];
+            if (feedback && feedback.trim()) {
+                content += '\n\n【审核备注】\n' + feedback;
+            }
+            return content;
+        }
+        if (key === 'decomposition_result') return state['decomposition_result'] || '';
+        if (key === '_reasoning') {
+            const parts = [];
+            for (const k of Object.keys(state).sort()) {
+                if (/^reasoning_.+_result$/.test(k) && state[k]) {
+                    const label = fieldLabel(k) || k;
+                    parts.push('===== ' + label + ' =====\n' + state[k]);
+                }
+            }
+            return parts.join('\n\n');
+        }
+        if (key === 'parallel_reasoning_result') return state['parallel_reasoning_result'] || '';
+        if (key === '_review') return state['review_content'] || '';
+        return '';
+    }
+
+    function resolveActiveStepKey(state, sseActiveKey) {
+        // 终态/暂停态：没有活跃步骤，全部标记 done
+        const ws = state['workflow_status'] || '';
+        if (ws === 'WAITING_REVIEW' || ws === 'COMPLETED' || ws === 'TERMINATED' || ws === 'FAILED') return null;
+
+        const sseMap = window._sseLastUpdate || {};
+        const now = Date.now();
+
+        // 并行推理流式输出中
+        for (const k of Object.keys(sseMap)) {
+            if (/^reasoning_.+_result$/.test(k) && now - (sseMap[k] || 0) < 15000) {
+                return '_reasoning';
+            }
+        }
+        // 需求拆解流式输出中
+        if (sseActiveKey === 'decomposition_result' && now - (sseMap['decomposition_result'] || 0) < 15000) {
+            return 'decomposition_result';
+        }
+        // 拆解刚结束、推理尚未有输出：提前激活并行推理步骤（显示"思考中..."）
+        if (state['decomposition_result'] && !hasReasoningOutput(state) && !state['parallel_reasoning_result']) {
+            const decompAge = now - (sseMap['decomposition_result'] || 0);
+            if (decompAge > 5000) return '_reasoning';
+        }
+        // 合并/审核等步骤
+        if (sseActiveKey && now - (sseMap[sseActiveKey] || 0) < 15000) {
+            if (sseActiveKey === 'parallel_reasoning_result') return 'parallel_reasoning_result';
+            if (sseActiveKey === 'review_content') return '_review';
+        }
+
+        // 默认：第一个未完成的步骤
+        for (const step of WORKFLOW_STEPS) {
+            if (!checkStepDone(state, step)) return step.key;
+        }
+        return null;
+    }
+
+    function getStallHint(stepKey) {
+        const luMap = window._sseLastUpdate || {};
+        let lu = luMap[stepKey] || 0;
+        if (stepKey === '_reasoning') {
+            for (const k of Object.keys(luMap)) {
+                if (/^reasoning_.+_result$/.test(k)) {
+                    lu = Math.max(lu, luMap[k] || 0);
+                }
+            }
+        }
+        const age = Date.now() - lu;
+        if (lu && age > 4000) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 增量渲染进度面板。
+     * - 首次调用：完整构建 DOM。
+     * - 后续调用：复用已有 DOM 节点，只更新状态 class 和活跃步骤的 textContent，
+     *   避免重建 DOM 导致已完成步骤的滚动位置丢失。
+     */
+    function renderProgress(state, sseActiveKey) {
+        const stepsDiv = $('steps');
+        const isFirstRender = !stepsDiv.querySelector('.progress-step');
+
+        if (isFirstRender) {
+            // 首次：完整构建骨架
+            let html = '';
+            for (const step of WORKFLOW_STEPS) {
+                html += `<div class="progress-step" data-step-key="${step.key}">
+                    <span class="step-icon"></span>
+                    <span class="step-name">${step.name}</span>
+                    <div class="step-body" data-step="${step.key}"></div>
+                </div>`;
+            }
+            stepsDiv.innerHTML = html;
+            // 为所有 step-body 绑定滚动监听（一次性）
+            stepsDiv.querySelectorAll('.step-body').forEach(function(el) {
+                el.addEventListener('scroll', function() {
+                    el._userScrolled = (el.scrollHeight - el.scrollTop - el.clientHeight) > 30;
+                });
+            });
+        }
+
+        // 判断是否处于"等待人工审核"暂停态——此时不应有 active 步骤
+        const isWaitingReview = state['workflow_status'] === 'WAITING_REVIEW';
+        if (isWaitingReview) {
+            setResumeButtonsEnabled(true);
+        }
+        const activeStepKey = resolveActiveStepKey(state, sseActiveKey);
+
+        // 增量更新每个步骤
+        stepsDiv.querySelectorAll('.progress-step').forEach(function(stepEl) {
+            const stepKey = stepEl.getAttribute('data-step-key');
+            const step = WORKFLOW_STEPS.find(s => s.key === stepKey);
+            if (!step) return;
+
+            let done = checkStepDone(state, step);
+            // 当前活跃步骤不能标记为 done
+            if (step.key === activeStepKey) {
+                done = false;
+            }
+
+            // 确定 class
+            let cls;
+            if (done) {
+                cls = 'done';
+            } else if (isWaitingReview) {
+                cls = '';
+            } else if (step.key === activeStepKey) {
+                cls = 'active';
+            } else {
+                cls = '';
+            }
+
+            // 只在 class 变化时更新（避免不必要的 DOM 操作）
+            if (stepEl.getAttribute('data-last-cls') !== cls) {
+                stepEl.className = 'progress-step' + (cls ? ' ' + cls : '');
+                stepEl.querySelector('.step-icon').textContent = done ? '✓' : (cls === 'active' ? '⋯' : '');
+                stepEl.setAttribute('data-last-cls', cls);
+            }
+
+            // 更新内容：只有 done 或 active 步骤显示内容
+            const bodyEl = stepEl.querySelector('.step-body');
+            const content = (done || cls === 'active') ? getStepContent(state, step) : '';
+
+            if (content) {
+                if (bodyEl.textContent !== content) {
+                    const wasAtBottom = cls === 'active' && !bodyEl._userScrolled;
+                    bodyEl.textContent = content;
+                    bodyEl.style.display = '';
+                    bodyEl.removeAttribute('data-thinking');
+                    if (wasAtBottom) {
+                        bodyEl.scrollTop = bodyEl.scrollHeight;
+                    }
+                    // 新内容到达时重置用户滚动标记，后续 stall hint 可继续自动滚动
+                    bodyEl._userScrolled = false;
+                }
+                // stall hint：单独的元素，用 innerHTML 渲染动画点
+                const stallText = cls === 'active' ? getStallHint(step.key) : '';
+                let stallEl = stepEl.querySelector('.stall-indicator');
+                const hadStall = stallEl && stallEl.style.display !== 'none';
+                if (stallText) {
+                    if (!stallEl) {
+                        stallEl = document.createElement('div');
+                        stallEl.className = 'stall-indicator';
+                        bodyEl.appendChild(stallEl);
+                    }
+                    stallEl.innerHTML = '<span style="color:#ff9800;">⏳ 思考中<span class="thinking-dot">.</span><span class="thinking-dot">.</span><span class="thinking-dot">.</span></span>';
+                    stallEl.style.display = '';
+                    // stall hint 活跃期间，每次渲染都保持滚动到底部（除非用户手动上滚）
+                    if (!bodyEl._userScrolled) {
+                        bodyEl.scrollTop = bodyEl.scrollHeight;
+                    }
+                } else {
+                    if (stallEl) stallEl.style.display = 'none';
+                }
+            } else if (cls === 'active') {
+                // active 步骤尚无内容：显示"思考中..."过渡提示
+                if (!bodyEl.getAttribute('data-thinking')) {
+                    bodyEl.innerHTML = '<span style="color:#888;">思考中<span class="thinking-dot">.</span><span class="thinking-dot">.</span><span class="thinking-dot">.</span></span>';
+                    bodyEl.setAttribute('data-thinking', '1');
+                    bodyEl.style.display = '';
+                }
+            } else {
+                // 无内容且非 active：隐藏
+                if (bodyEl.style.display !== 'none') {
+                    bodyEl.style.display = 'none';
+                    bodyEl.textContent = '';
+                    bodyEl.removeAttribute('data-thinking');
+                }
+            }
+        });
+    }
+
+    /**
+     * 启动 SSE 监听。
+     * @param threadId 工作流线程 ID
+     * @param preserveContent 是否保留已有步骤内容（APPROVED 时 true，首次/SENT_BACK 时 false）
+     */
+    function listenEvents(threadId, preserveContent) {
+        closeEvents();
         $('progress').classList.add('show');
         $('progressThreadId').textContent = 'Thread: ' + threadId;
         $('resumeThreadId').value = threadId;
-        renderProgress({});
-        pollState(threadId);
+        $('finalStatus').style.display = 'none';   // 隐藏终态区域
+
+        const state = {};
+        let lastSseKey = null;
+        let sseErrorCount = 0;
+        // 记录每个 SSE key 最后一次事件到达的时间戳（全局可访问，供 getStallHint 使用）
+        window._sseLastUpdate = {};
+        const sseLastUpdate = window._sseLastUpdate;
+
+        if (preserveContent) {
+            // APPROVED：保留已有步骤内容，立即查询完整 state 并渲染
+            // renderProgress 中 active 步骤无内容时会自动显示"思考中..."
+            fetch(API_BASE + '/state/' + encodeURIComponent(threadId))
+                .then(r => r.json())
+                .then(json => {
+                    if (json.code === 0 && json.data && json.data.state) {
+                        for (const [k, v] of Object.entries(json.data.state)) {
+                            state[k] = v;
+                        }
+                        // 渲染：SSE 事件更新状态，并检查人工审核是否完成
+                        renderProgress(state, null);
+                    }
+                }).catch(function(){});
+        } else {
+            // 首次执行 / SENT_BACK：清空所有步骤，从头渲染
+            $('steps').innerHTML = '';
+            WORKFLOW_STEPS.forEach(s => s.done = false);
+            renderProgress({}, null);
+        }
+
+        // 创建 SSE 连接的函数（支持重连）
+        function connectSSE() {
+            es = new EventSource(API_BASE + '/events/' + encodeURIComponent(threadId));
+
+            // SSE 实时事件
+            es.onmessage = function(e) {
+                try {
+                    const d = JSON.parse(e.data);
+                    if (d.key && d.value != null) {
+                        // 增量事件：追加拼接；全量事件：直接覆盖
+                        const isDelta = !!d._delta;
+                        if (isDelta) {
+                            state[d.key] = (state[d.key] || '') + d.value;
+                        } else {
+                            // 推理启动空信号：保留已有增量，不覆盖
+                            if (/^reasoning_.+_result$/.test(d.key) && d.value === '' && state[d.key]) {
+                                // skip overwrite
+                            } else {
+                                state[d.key] = d.value;
+                            }
+                        }
+                        if (d.value.length > 0) {
+                            lastSseKey = d.key;
+                            sseLastUpdate[d.key] = Date.now();
+                        }
+                        // 并行推理：任意事件（含启动信号）均切换活跃步骤
+                        if (/^reasoning_.+_result$/.test(d.key)) {
+                            lastSseKey = d.key;
+                            sseLastUpdate[d.key] = Date.now();
+                            sseLastUpdate['_reasoning'] = Date.now();
+                        }
+                        renderProgress(state, lastSseKey);
+
+                        // 检测终态：仅 workflow_status 携带终态信号
+                        if (d.key === 'workflow_status' && d.status && d.status !== 'RUNNING') {
+                            handleWorkflowFinished(threadId, d.status);
+                        }
+                    }
+                } catch(ignore) {}
+            };
+
+            // SSE 连接异常断开时，先查询状态再决定处理方式
+            es.onerror = function() {
+                console.log('[SSE onerror] 触发, sseErrorCount=' + sseErrorCount + ', threadId=' + threadId + ', pollFallback=' + !!pollFallback + ', pollDelayTimer=' + !!pollDelayTimer);
+                if (es) { es.close(); es = null; }
+                // 如果 closeEvents 已被调用（终态处理中），不再重连
+                if (pollFallback === null && pollDelayTimer === null) {
+                    console.log('[SSE onerror] 轮询已关闭，忽略');
+                    return;
+                }
+
+                fetch(API_BASE + '/state/' + encodeURIComponent(threadId))
+                    .then(r => r.json())
+                    .then(json => {
+                        if (json.code === 0) {
+                            const s = json.data && json.data.status;
+                            console.log('[SSE onerror] 查询状态=' + s + ', sseErrorCount=' + sseErrorCount);
+                            if (s === 'RUNNING' && sseErrorCount < 5) {
+                                sseErrorCount++;
+                                setTimeout(connectSSE, 1000);
+                            } else {
+                                handleWorkflowFinished(threadId, s);
+                            }
+                        } else {
+                            handleWorkflowFinished(threadId, null);
+                        }
+                    }).catch(function() {
+                        console.log('[SSE onerror] 查询状态失败');
+                        handleWorkflowFinished(threadId, null);
+                    });
+            };
+        }
+
+        connectSSE();
+
+        // 后台轮询补漏（延迟 3 秒启动，每 2 秒轮询）
+        pollDelayTimer = setTimeout(function() {
+            pollFallback = setInterval(function() {
+                fetch(API_BASE + '/state/' + encodeURIComponent(threadId))
+                    .then(r => r.json())
+                    .then(json => {
+                        if (json.code === 0 && json.data && json.data.state) {
+                            let updated = false;
+                            for (const [k, v] of Object.entries(json.data.state)) {
+                                if (state[k] !== v) {
+                                    state[k] = v;
+                                    updated = true;
+                                }
+                            }
+                            // 始终调用 renderProgress（即使 state 未变），确保 stall hint 等时效性 UI 能更新
+                            renderProgress(state, lastSseKey);
+                        }
+                    }).catch(function(){});
+            }, 2000);
+        }, 3000);
     }
 
-    function stopPolling() {
-        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    /**
+     * 工作流执行结束处理：关闭 SSE/轮询，查询最终状态，更新 UI。
+     * 可由 SSE onmessage 检测到终态 status 触发，也可由 onerror 兜底触发。
+     * 不再跳转结果面板，所有信息都在进度面板内展示。
+     * @param threadId 工作流线程 ID
+     * @param knownStatus 已知的状态（来自 SSE 事件），null 表示未知需查询
+     */
+    function handleWorkflowFinished(threadId, knownStatus) {
+        console.log('[handleWorkflowFinished] 调用, knownStatus=' + knownStatus + ', threadId=' + threadId);
+        // 防止重复处理
+        if (es === null && pollFallback === null && pollDelayTimer === null) {
+            console.log('[handleWorkflowFinished] 已关闭，跳过');
+            return;
+        }
+        closeEvents();
+
+        fetch(API_BASE + '/state/' + encodeURIComponent(threadId))
+            .then(r => r.json())
+            .then(json => {
+                if (json.code === 0) {
+                    const data = json.data;
+                    // 用完整 State 渲染进度条（补上非 MultiRoundAgentNode 节点的输出）
+                    // 注入终态 workflow_status：checkpoint 保存于终态前节点，不含终态标记
+                    if (data.state) {
+                        data.state['workflow_status'] = data.status;
+                        renderProgress(data.state, null);
+                    }
+
+                    if (data.status === 'WAITING_REVIEW') {
+                        console.log('[handleWorkflowFinished] → WAITING_REVIEW，启用审核按钮');
+                        // 等待人工审核：启用审核操作按钮
+                        $('resumeThreadId').value = threadId;
+                        setResumeButtonsEnabled(true);
+                        $('finalStatus').style.display = 'none';
+                    } else if (data.status === 'RUNNING') {
+                        console.log('[handleWorkflowFinished] → RUNNING，重新监听');
+                        // 工作流仍在执行中（收到了残留的旧终态事件，后端 clearEvents 后不应再出现）
+                        // 兜底：重新启动 SSE 监听，保留已有内容
+                        listenEvents(threadId, true);
+                    } else {
+                        console.log('[handleWorkflowFinished] → ' + data.status + '，显示终态');
+                        // COMPLETED / TERMINATED / FAILED：在进度面板底部展示终态信息
+                        setResumeButtonsEnabled(false);
+                        showFinalStatus(data);
+                    }
+                } else {
+                    showResult('<p style="color:red;">错误：' + escapeHtml(json.message || '未知错误') + '</p>', true);
+                }
+            }).catch(function() {
+                // 网络异常等，忽略
+            });
+    }
+
+    /** 在进度面板底部展示终态信息 */
+    function showFinalStatus(data) {
+        const el = $('finalStatus');
+        const status = data.status || 'UNKNOWN';
+        const colors = {
+            'COMPLETED':  { bg: '#d4edda', border: '#28a745', text: '#155724', icon: '✅' },
+            'TERMINATED': { bg: '#f8d7da', border: '#dc3545', text: '#721c24', icon: '🛑' },
+            'FAILED':     { bg: '#e2e3e5', border: '#6c757d', text: '#383d41', icon: '❌' },
+        };
+        const c = colors[status] || colors['FAILED'];
+        let html = '<div style="background:' + c.bg + ';color:' + c.text + ';padding:12px;border-radius:6px;border:1px solid ' + c.border + ';">';
+        html += '<strong style="font-size:14px;">' + c.icon + ' 工作流' + status + '</strong>';
+        if (data.message) {
+            html += '<div style="margin-top:4px;font-size:13px;">' + escapeHtml(data.message) + '</div>';
+        }
+        html += '</div>';
+        el.innerHTML = html;
+        el.style.display = 'block';
+    }
+
+    function closeEvents() {
+        if (es) { es.close(); es = null; }
+        if (pollFallback) { clearInterval(pollFallback); pollFallback = null; }
+        if (pollDelayTimer) { clearTimeout(pollDelayTimer); pollDelayTimer = null; }
     }
 
     function setResumeButtonsEnabled(enabled) {
         ['btnApprove', 'btnSentBack', 'btnTerminate'].forEach(function(id) {
             $(id).disabled = !enabled;
         });
-    }
-
-    async function pollState(threadId) {
-        try {
-            const res = await fetch(API_BASE + '/state/' + encodeURIComponent(threadId));
-            const json = await res.json();
-            if (json.code === 0) {
-                const data = json.data;
-                const state = data.state || {};
-                renderProgress(state);
-
-                let doneCount = 0;
-                for (const step of WORKFLOW_STEPS) {
-                    if (checkStepDone(state, step)) doneCount++;
-                }
-                if (doneCount === lastDoneCount) { stuckCount++; }
-                else { lastDoneCount = doneCount; stuckCount = 0; }
-                const stuckHtml = (stuckCount >= STUCK_WARN)
-                    ? '<p style="color:#e67e22;margin-top:8px;font-size:13px;">\u26A0 步骤长时间无进展，可能节点异常（检查控制台日志）</p>'
-                    : '';
-
-                if (data.status === 'RUNNING') {
-                    if (stuckCount >= STUCK_STOP) {
-                        stopPolling();
-                        $('progress').classList.remove('show');
-                        showResult('<p style="color:red;">智能体工作流执行超时：进度约 10 分钟无变化，可能节点异常</p>' + renderResult(data), true);
-                    } else {
-                        $('steps').innerHTML += stuckHtml;
-                        pollTimer = setTimeout(() => pollState(threadId), 2000);
-                    }
-                } else {
-                    stopPolling();
-                    $('progress').classList.remove('show');
-
-                    // COMPLETED → 显示"进入代码生成中"
-                    if (data.status === 'COMPLETED') {
-                        $('approvedHint').style.display = 'block';
-                    }
-                    showResult(renderResult(data));
-                    if (data.status === 'WAITING_REVIEW') {
-                        $('resumeThreadId').value = threadId;
-                        setResumeButtonsEnabled(true);
-                    } else {
-                        setResumeButtonsEnabled(false);
-                    }
-                }
-            } else {
-                stopPolling();
-                showResult('<p style="color:red;">错误：' + escapeHtml(json.message || '未知错误') + '</p>', true);
-            }
-        } catch (err) {
-            stopPolling();
-            showResult('<p style="color:red;">请求失败：' + escapeHtml(err.message) + '</p>', true);
-        }
     }
 
     function renderResult(data) {
@@ -427,12 +922,14 @@
         return html;
     }
 
+    // ---------- 1. 启动工作流 ----------
     async function startWorkflow() {
         const requirement = $('requirement').value.trim();
         if (!requirement) { alert('请输入研发需求'); return; }
+
         hideLoading();
         $('result').classList.remove('show', 'error');
-        $('approvedHint').style.display = 'none';
+        $('comment').value = ''; // 清空审核备注输入框
         try {
             const res = await fetch(API_BASE + '/start', {
                 method: 'POST',
@@ -441,7 +938,7 @@
             });
             const json = await res.json();
             if (json.code === 0 && json.data && json.data.threadId) {
-                startPolling(json.data.threadId);
+                listenEvents(json.data.threadId);
             } else {
                 showResult('<p style="color:red;">错误：' + escapeHtml(json.message || '未知错误') + '</p>', true);
             }
@@ -450,15 +947,19 @@
         }
     }
 
+    // ---------- 3. 恢复工作流 ----------
     async function resumeWorkflow(decision) {
         const threadId = $('resumeThreadId').value.trim();
         const comment = $('comment').value.trim();
         if (!threadId) { alert('请输入 threadId'); return; }
+
         hideLoading();
         $('result').classList.remove('show', 'error');
-        $('approvedHint').style.display = 'none';
         try {
-            const body = { threadId: threadId, reviewDecision: decision };
+            const body = {
+                threadId: threadId,
+                reviewDecision: decision
+            };
             if (comment) body.comment = comment;
 
             const res = await fetch(API_BASE + '/resume', {
@@ -468,15 +969,16 @@
             });
             const json = await res.json();
             if (json.code === 0) {
-                const d = json.data;
-                if (d.status === 'RUNNING') {
-                    startPolling(d.threadId);
-                } else if (d.status === 'COMPLETED') {
-                    $('approvedHint').style.display = 'block';
-                    setResumeButtonsEnabled(false);
-                    showResult(renderResult(d));
+                if (json.data && json.data.status === 'RUNNING') {
+                    // RUNNING → SSE 监听
+                    // APPROVED：保留已有步骤内容（需求拆解、推理结果等），只监听后续步骤
+                    // SENT_BACK：清空所有内容从头开始（驳回重跑）
+                    const preserve = (decision === 'APPROVED');
+                    listenEvents(json.data.threadId, preserve);
                 } else {
-                    showResult(renderResult(d));
+                    // TERMINATED 同步返回：在进度面板展示终态信息
+                    setResumeButtonsEnabled(false);
+                    showFinalStatus(json.data);
                 }
             } else {
                 showResult('<p style="color:red;">错误：' + escapeHtml(json.message || '未知错误') + '</p>', true);
@@ -486,6 +988,7 @@
         }
     }
 
+    // 初始状态：审核按钮默认禁用
     setResumeButtonsEnabled(false);
 </script>
 </body>

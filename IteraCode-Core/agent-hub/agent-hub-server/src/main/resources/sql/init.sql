@@ -41,3 +41,17 @@ CREATE TABLE `log_info` (
                             PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='日志信息表';
 
+
+CREATE TABLE IF NOT EXISTS `workflow_metadata` (
+    `thread_id`       VARCHAR(32)  NOT NULL COMMENT '工作流线程ID',
+    `requirement`     TEXT         COMMENT '研发需求原文',
+    `review_feedback` VARCHAR(512) COMMENT '审核备注',
+    `status`          VARCHAR(32)  NOT NULL COMMENT '工作流状态：RUNNING-运行中 WAITING_REVIEW-待审核 COMPLETED-已完成 TERMINATED-已终止 FAILED-失败',
+    `create_time`     DATETIME     NOT NULL COMMENT '创建时间',
+    `update_time`     DATETIME     NOT NULL COMMENT '最后更新时间',
+    PRIMARY KEY (`thread_id`),
+    INDEX `idx_status` (`status`),
+    INDEX `idx_create_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工作流元数据表';
+
+
