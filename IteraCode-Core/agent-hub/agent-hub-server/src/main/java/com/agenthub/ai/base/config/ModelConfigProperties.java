@@ -39,5 +39,9 @@ public class ModelConfigProperties {
         private double temperature = 0.7;
         /** 最大 token 数，默认 2048 */
         private int maxTokens = 2048;
+        /** 远程 API 地址，openai 兼容类型使用 */
+        private String baseUrl;
+        /** 远程 API 密钥，openai 兼容类型使用 */
+        private String apiKey;
     }
 }

@@ -15,6 +15,9 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
@@ -53,6 +56,8 @@ public class LLMConfig {
                     continue;
                 }
                 chatModel = createDashScopeChatModel(dashScopeApi, mc);
+            } else if ("openai".equalsIgnoreCase(mc.getType())) {
+                chatModel = createOpenAiChatModel(mc);
             } else {
                 log.warn("跳过未知类型的模型 '{}': type={}", name, mc.getType());
                 continue;
@@ -122,14 +127,32 @@ public class LLMConfig {
     }
 
     private ChatModel createDashScopeChatModel(DashScopeApi api, ModelConfigProperties.ModelConfig mc) {
+        DashScopeChatOptions options = DashScopeChatOptions.builder()
+                .withModel(mc.getModel())
+                .withTemperature(mc.getTemperature())
+                .withMaxToken(mc.getMaxTokens())
+                .build();
         return DashScopeChatModel.builder()
                 .dashScopeApi(api)
-                .defaultOptions(DashScopeChatOptions.builder()
-                        .model(mc.getModel())
-                        .temperature(mc.getTemperature())
-                        .maxToken(mc.getMaxTokens())
-                        .build())
+                .defaultOptions(options)
                 .build();
+    }
+
+    private ChatModel createOpenAiChatModel(ModelConfigProperties.ModelConfig mc) {
+        String baseUrl = mc.getBaseUrl();
+        String apiKey = mc.getApiKey();
+        // 全局统一配置：url 取 ollama，key 取 dashscope
+        if (baseUrl == null || baseUrl.isBlank()) {
+            baseUrl = modelConfigProperties.getOllama().getBaseUrl();
+        }
+        if (apiKey == null || apiKey.isBlank()) {
+            apiKey = modelConfigProperties.getDashscope().getApiKey();
+        }
+        if (baseUrl == null || apiKey == null) {
+            throw new IllegalStateException("openai 类型需要 baseUrl(ollama) 和 apiKey(dashscope)");
+        }
+        OpenAiApi api = OpenAiApi.builder().baseUrl(baseUrl).apiKey(apiKey).build();
+        return OpenAiChatModel.builder().openAiApi(api).build();
     }
 
     // ===== LoggingChatModel 内部类 =====
