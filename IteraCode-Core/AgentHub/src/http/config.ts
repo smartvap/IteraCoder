@@ -2,10 +2,10 @@
 const isElectronPackaged = !!(window as any).electronAPI && !window.location.href.includes("localhost")
 
 /** 本地接口地址（未登录/游客模式，走本地 H2 数据库） */
-export const LOCAL_BASE_URL = isElectronPackaged ? "http://localhost:8989/api/v1" : "/api/v1"
+export const LOCAL_BASE_URL = isElectronPackaged ? "http://localhost:8988/api/v1" : "/api/v1"
 
 /** 远程接口地址（已登录用户模式，走后端 MySQL） */
-export const REMOTE_BASE_URL = isElectronPackaged ? "http://localhost:8989/api/v1" : "/api/v1"
+export const REMOTE_BASE_URL = isElectronPackaged ? "http://localhost:8988/api/v1" : "/api/v1"
 
 /** 根据登录状态动态获取接口地址 */
 export function getBaseUrl(): string {

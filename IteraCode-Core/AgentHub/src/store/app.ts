@@ -40,6 +40,8 @@ interface AppSettings {
   ollamaUrl: string
   apiUrl: string
   apiKey: string
+  remoteProvider: string
+  remoteModel: string
   currentModel: string
   modelConfigs: ModelConfig[]
   showReasoning: boolean
@@ -57,6 +59,8 @@ const defaultSettings: AppSettings = {
   ollamaUrl: "http://localhost:11434",
   apiUrl: "",
   apiKey: "",
+  remoteProvider: "openai",
+  remoteModel: "",
   currentModel: "",
   modelConfigs: [],
   showReasoning: true,

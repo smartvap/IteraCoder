@@ -31,10 +31,13 @@
     "vue-router": "^4.3.0"
   },
   "devDependencies": {
+    "@types/file-saver": "^2.0.7",
     "@types/node": "^20.12.2",
     "@vitejs/plugin-vue": "^5.0.4",
     "electron": "^29.4.6",
     "electron-builder": "^24.13.3",
+    "file-saver": "^2.0.5",
+    "jszip": "^3.10.1",
     "less": "^4.2.0",
     "typescript": "^5.2.2",
     "unplugin-auto-import": "^0.17.5",

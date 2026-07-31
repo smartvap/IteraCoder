@@ -32,17 +32,17 @@ const routes: RouteRecordRaw[] = [
   //     requiresAuth: true,
   //   },
   // },
-  {
-    path: "/agent-chat",
-    name: "agentChat",
-    component: () => import("@/view/chat/AgentChat.vue"),
-    meta: {
-      isMenu: true,
-      description: "agentChat",
-      icon: "ChatDotRound",
-      requiresAuth: true,
-    },
-  },
+  // {
+  //   path: "/agent-chat",
+  //   name: "agentChat",
+  //   component: () => import("@/view/chat/AgentChat.vue"),
+  //   meta: {
+  //     isMenu: true,
+  //     description: "agentChat",
+  //     icon: "ChatDotRound",
+  //     requiresAuth: true,
+  //   },
+  // },
   {
     path: "/chat-index",
     name: "chatIndex",

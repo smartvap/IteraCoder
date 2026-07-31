@@ -57,3 +57,16 @@ export const enum UserApi {
   Login = "/user/login",
   UpdatePassword = "/user/updatePassword",
 }
+
+export const enum WorkflowApi {
+  Route  = "/chat2/route",
+  Start  = "/workflow/start",
+  State  = "/workflow/state",
+  Resume = "/workflow/resume",
+}
+
+export const enum ProjectApi {
+  Save   = "/project/save",
+  Deploy = "/project/deploy",
+  DockerCheck = "/project/docker-check",
+}

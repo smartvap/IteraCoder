@@ -69,14 +69,9 @@
             size="small"
           />
         </el-form-item>
-        <el-form-item v-show="form.modelType === 'network'" label="API Key">
-          <el-input
-            v-model="form.apiKey"
-            type="password"
-            placeholder="输入 API Key（如需）"
-            size="small"
-            show-password
-          />
+        <el-form-item v-show="form.modelType === 'network'" label="使用模型">
+          <el-input v-model="form.remoteModel" placeholder="如 GLM-4.7-Flash" size="small" style="width:240px"/>
+          <span class="form-hint">对应后端配置的模型 name</span>
         </el-form-item>
 
         <el-form-item>
@@ -231,6 +226,7 @@ const form = reactive({
   ollamaUrl: appStore.ollamaUrl || "http://localhost:11434",
   apiUrl: appStore.apiUrl,
   apiKey: appStore.apiKey || "",
+  remoteModel: (JSON.parse(localStorage.getItem("agent-hub-app-settings") || "{}") as any).remoteModel || "",
   useMysql: appStore.useMysql ?? false,
   enableLogging: appStore.enableLogging ?? false,
 })
