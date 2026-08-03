@@ -3,8 +3,11 @@ spring:
     async:
       request-timeout: 600000
   ai:
+    openai:
+      api-key: ${ZPAPIKEY}
+      base-url: https://open.bigmodel.cn/api/paas
     dashscope:
-      api-key: ${QWENAPIKEY}
+      api-key: ${LIAPIKEY}
     ollama:
       base-url: http://localhost:11434
       timeout: 30s
@@ -29,6 +32,17 @@ spring:
         model: glm-5.2
         temperature: 0.5
         max-tokens: 8192
+      - name: deepseek-v4-pro
+        type: dashscope
+        model: deepseek-v4-pro
+        temperature: 0.5
+        max-tokens: 8192
+      - name: glm-4.7-flash
+        type: openai
+        model: glm-4.7-flash
+        temperature: 0.5
+        max-tokens: 8192
+        completions-path: /v4/chat/completions
     primary: qwen3
 
   autoconfigure:

@@ -12,6 +12,7 @@ public class ModelConfigProperties {
 
     private Ollama ollama = new Ollama();
     private DashScope dashscope = new DashScope();
+    private OpenAi openai = new OpenAi();
     /** 主模型名称，必须与 models 列表中某个 name 一致；未配置则取列表第一个 */
     private String primary;
     private List<ModelConfig> models = new ArrayList<>();
@@ -25,6 +26,12 @@ public class ModelConfigProperties {
     @Data
     public static class DashScope {
         private String apiKey;
+    }
+
+    @Data
+    public static class OpenAi {
+        private String apiKey;
+        private String baseUrl;
     }
 
     @Data
@@ -43,5 +50,7 @@ public class ModelConfigProperties {
         private String baseUrl;
         /** 远程 API 密钥，openai 兼容类型使用 */
         private String apiKey;
+        /** completions 路径，如智谱 GLM 用 /v4/chat/completions，不配则用默认 /v1/chat/completions */
+        private String completionsPath;
     }
 }

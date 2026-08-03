@@ -57,6 +57,14 @@ public class LLMConfig {
                 }
                 chatModel = createDashScopeChatModel(dashScopeApi, mc);
             } else if ("openai".equalsIgnoreCase(mc.getType())) {
+                String apiKey = mc.getApiKey();
+                if (apiKey == null || apiKey.isBlank()) {
+                    apiKey = modelConfigProperties.getOpenai().getApiKey();
+                }
+                if (apiKey == null || apiKey.isBlank() || apiKey.contains("$")) {
+                    log.warn("跳过 OpenAI 模型 '{}': apiKey 未配置", name);
+                    continue;
+                }
                 chatModel = createOpenAiChatModel(mc);
             } else {
                 log.warn("跳过未知类型的模型 '{}': type={}", name, mc.getType());
@@ -64,6 +72,9 @@ public class LLMConfig {
             }
 
             // 1. 注册 ChatModel Bean → "{name}ChatModel"（可单独 @Qualifier 注入）
+            if (beanFactory.containsSingleton(name + "ChatModel")) {
+                log.warn("模型 '{}' 重复注册，将覆盖之前注册的同名 ChatModel Bean，请检查 models 配置", name);
+            }
             beanFactory.registerSingleton(name + "ChatModel", chatModel);
 
             // 2. 注册 ChatClient Bean → "{name}"（Spring Map<String, ChatClient> 自动收集）
@@ -143,16 +154,22 @@ public class LLMConfig {
         String apiKey = mc.getApiKey();
         // 全局统一配置：url 取 ollama，key 取 dashscope
         if (baseUrl == null || baseUrl.isBlank()) {
-            baseUrl = modelConfigProperties.getOllama().getBaseUrl();
+            baseUrl = modelConfigProperties.getOpenai().getBaseUrl();
         }
         if (apiKey == null || apiKey.isBlank()) {
-            apiKey = modelConfigProperties.getDashscope().getApiKey();
+            apiKey = modelConfigProperties.getOpenai().getApiKey();
         }
-        if (baseUrl == null || apiKey == null) {
-            throw new IllegalStateException("openai 类型需要 baseUrl(ollama) 和 apiKey(dashscope)");
+        var apiBuilder = OpenAiApi.builder().baseUrl(baseUrl).apiKey(apiKey);
+        if (mc.getCompletionsPath() != null && !mc.getCompletionsPath().isBlank()) {
+            apiBuilder.completionsPath(mc.getCompletionsPath());
         }
-        OpenAiApi api = OpenAiApi.builder().baseUrl(baseUrl).apiKey(apiKey).build();
-        return OpenAiChatModel.builder().openAiApi(api).build();
+        OpenAiApi api = apiBuilder.build();
+        OpenAiChatOptions options = OpenAiChatOptions.builder()
+                .model(mc.getModel())
+                .temperature(mc.getTemperature())
+                .maxTokens(mc.getMaxTokens())
+                .build();
+        return OpenAiChatModel.builder().openAiApi(api).defaultOptions(options).build();
     }
 
     // ===== LoggingChatModel 内部类 =====

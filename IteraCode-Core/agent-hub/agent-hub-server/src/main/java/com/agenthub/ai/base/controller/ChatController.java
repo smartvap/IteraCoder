@@ -54,12 +54,13 @@ public class ChatController {
     private String ollamaBaseUrl;
     //    private final ChatClient chatClient;
     private final ChatClient.Builder chatClientBuilder;
+    private final Map<String, ChatClient> chatClients;
     private final ChatMemory chatMemory;
     private final ApplicationContext applicationContext;
 
     public ChatController(ChatClient.Builder chatClientBuilder, Map<String, ChatClient> chatClients, ChatMemory chatMemory, ApplicationContext applicationContext) {
         this.chatClientBuilder = chatClientBuilder;
-//        this.chatClients = chatClients;
+        this.chatClients = chatClients;
         this.chatMemory = chatMemory;
         this.applicationContext = applicationContext;
 
@@ -118,7 +119,6 @@ public class ChatController {
             log.info("使用前端提供的 apiKey 动态创建 ChatClient: model={}, baseUrl={}", model, baseUrl);
             var apiBuilder = org.springframework.ai.openai.api.OpenAiApi.builder().apiKey(apiKey);
             if (baseUrl != null && !baseUrl.isEmpty()) apiBuilder.baseUrl(baseUrl);
-            // GLM/智谱 API 用 /chat/completions 而非 /v1/chat/completions
             apiBuilder.completionsPath("/chat/completions");
             return org.springframework.ai.chat.client.ChatClient.builder(
                     org.springframework.ai.openai.OpenAiChatModel.builder()
@@ -127,11 +127,13 @@ public class ChatController {
                     .defaultOptions(org.springframework.ai.openai.OpenAiChatOptions.builder().model(model).build())
                     .build();
         }
-        if (applicationContext.containsBean(model)) {
-            ChatClient client = applicationContext.getBean(model, ChatClient.class);
-            log.info("使用注册的 ChatClient: {}", model);
+        // 从注册的 ChatClient Map 中查找
+        if (chatClients.containsKey(model)) {
+            ChatClient client = chatClients.get(model);
+            log.info("使用注册的 ChatClient: {}, 类型={}", model, client.getClass().getSimpleName());
             return client;
         }
+        log.warn("模型 '{}' 未注册，回退到默认 Builder", model);
         return chatClientBuilder.clone()
                 .defaultOptions(OllamaChatOptions.builder().model(model).temperature(0.7).build())
                 .build();
@@ -150,12 +152,13 @@ public class ChatController {
         log.info("收到流式请求 - message: {}, prompt: {}", message, prompt);
 
         Long userId = BaseContext.getCurrentId();
-//        ChatClient selectedClient = chatClients.getOrDefault(model.toLowerCase(), chatClients.get(model));
-
-        ChatClient selectedClient = chatClientBuilder
-                .clone()
-                .defaultOptions(OllamaChatOptions.builder().model(model).temperature(0.7).build())
-                .build();
+        ChatClient selectedClient = chatClients.get(model);
+        if (selectedClient == null) {
+            log.warn("模型 '{}' 未注册，回退到默认 Builder", model);
+            selectedClient = chatClientBuilder.clone()
+                    .defaultOptions(OllamaChatOptions.builder().model(model).temperature(0.7).build())
+                    .build();
+        }
         return selectedClient.prompt()
                 .system(prompt)
                 .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, userId))
