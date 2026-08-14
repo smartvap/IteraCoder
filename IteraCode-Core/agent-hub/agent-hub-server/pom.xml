@@ -142,8 +142,8 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-ollama</artifactId>
         </dependency>
-
-        <!-- OpenAI 兼容 API 集成 -->
+	
+	<!-- OpenAI 兼容 API 集成 -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-openai</artifactId>
@@ -157,7 +157,7 @@
         </dependency>
 
     </dependencies>
-
+    
     <build>
         <plugins>
             <plugin>

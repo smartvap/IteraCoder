@@ -15,4 +15,5 @@ public class WorkflowRecordVO {
     private String status;
     private Date createTime;
     private Date updateTime;
+    private String remark;
 }

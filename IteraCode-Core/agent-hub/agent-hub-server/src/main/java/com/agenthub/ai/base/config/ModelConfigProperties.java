@@ -52,5 +52,11 @@ public class ModelConfigProperties {
         private String apiKey;
         /** completions 路径，如智谱 GLM 用 /v4/chat/completions，不配则用默认 /v1/chat/completions */
         private String completionsPath;
+        /** Ollama 上下文窗口大小 */
+        private Integer numCtx;
+        /** Ollama GPU 层数 */
+        private Integer numGPU;
+        /** Ollama 批处理大小 */
+        private Integer numBatch;
     }
 }

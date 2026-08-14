@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能体工作流历史记录</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f5f6fa; color:#333; padding:20px; }
+.container { max-width:1200px; margin:0 auto; display:flex; flex-direction:column; min-height:calc(100vh - 40px); }
+h1 { font-size:20px; margin-bottom:16px; color:#1a1a2e; flex-shrink:0; }
+.search-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; background:#fff; padding:16px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.08); margin-bottom:16px; flex-shrink:0; }
+.search-bar label { font-size:13px; color:#666; display:block; margin-bottom:4px; }
+.search-bar input, .search-bar select { padding:8px 12px; border:1px solid #ddd; border-radius:6px; font-size:14px; min-width:140px; }
+.search-bar button { padding:9px 24px; background:#0d6efd; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:14px; }
+.search-bar button:hover { background:#0b5ed7; }
+.table-wrap { flex:1; background:#fff; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.08); }
+table { width:100%; table-layout:fixed; border-collapse:collapse; }
+th { background:#f0f2f5; padding:12px 14px; text-align:left; font-size:13px; font-weight:600; color:#555; border-bottom:2px solid #e0e0e0; }
+td { padding:12px 14px; font-size:13px; border-bottom:1px solid #f0f0f0; vertical-align:top; }
+tr:hover { background:#f8f9ff; }
+.thread-id-link { font-family: monospace; font-size:12px; color:#0d6efd; text-decoration:none; }
+.thread-id-link:hover { text-decoration:underline; }
+.req-cell { max-width:300px; word-break:break-all; }
+.req-cell.nowrap { max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.feedback-cell { max-width:120px; color:#666; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.status { display:inline-block; padding:2px 10px; border-radius:10px; font-size:12px; font-weight:600; }
+.status-RUNNING { background:#e3f2fd; color:#1565c0; }
+.status-WAITING_REVIEW { background:#fff3e0; color:#e65100; }
+.status-COMPLETED { background:#e8f5e9; color:#2e7d32; }
+.status-TERMINATED { background:#fce4ec; color:#c62828; }
+.status-FAILED { background:#fce4ec; color:#c62828; }
+.remark-cell { max-width:160px; color:#888; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.terminate-btn { padding:3px 10px; background:#0d6efd; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; margin-left:4px; }
+.terminate-btn:hover { background:#0b5ed7; }
+.view-btn { display:inline-block; padding:3px 10px; background:#0d6efd; color:#fff; border-radius:4px; text-decoration:none; font-size:12px; cursor:pointer; border:none; margin-left:4px; }
+.view-btn:hover { background:#0b5ed7; }
+.action-bar { display:flex; gap:8px; align-items:center; background:#fff; padding:10px 16px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.08); margin-bottom:16px; flex-shrink:0; }
+.action-bar button { padding:7px 20px; font-size:13px; }
+.empty { text-align:center; padding:40px; color:#999; }
+.table-wrap { flex:1; }
+.pagination { display:flex; align-items:center; justify-content:center; gap:8px; padding:16px 0; flex-shrink:0; }
+.pagination button { padding:6px 14px; border:1px solid #ddd; border-radius:4px; background:#fff; cursor:pointer; font-size:13px; }
+.pagination button:hover { background:#f0f2f5; }
+.pagination button:disabled { color:#ccc; cursor:default; background:#f8f8f8; }
+.pagination .current { font-weight:600; color:#0d6efd; font-size:14px; }
+.pagination select { padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>📋 智能体工作流历史记录</h1>
+
+<div class="search-bar">
+    <div>
+        <label>开始日期</label>
+        <input type="date" id="startDate">
+    </div>
+    <div>
+        <label>结束日期</label>
+        <input type="date" id="endDate">
+    </div>
+    <div>
+        <label>状态</label>
+        <select id="status">
+            <option value="">全部</option>
+            <option value="RUNNING">执行中</option>
+            <option value="WAITING_REVIEW">待审核</option>
+            <option value="COMPLETED">已完成</option>
+            <option value="TERMINATED">已终止</option>
+            <option value="FAILED">失败</option>
+        </select>
+    </div>
+    <div>
+        <label>研发需求</label>
+        <input type="text" id="requirement" placeholder="输入关键词搜索">
+    </div>
+    <div>
+        <label>流程ID</label>
+        <input type="text" id="threadId" placeholder="输入流程ID搜索">
+    </div>
+    <button onclick="search()">🔍 查询</button>
+</div>
+
+<div class="action-bar">
+    <button class="view-btn" onclick="openSelected()">查看详情</button>
+    <button class="view-btn" onclick="downloadSelected()">下载代码</button>
+    <button class="terminate-btn" onclick="terminateSelected()">终止</button>
+</div>
+
+<div class="table-wrap">
+<table>
+    <thead>
+        <tr>
+            <th style="width:32px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)"></th>
+            <th style="width:50px;white-space:nowrap;">序号</th>
+            <th style="width:200px;">流程ID</th>
+            <th style="width:240px;">研发需求</th>
+            <th style="width:160px;">审核备注</th>
+            <th style="width:90px;text-align:center;">状态</th>
+            <th style="width:90px;">开始时间</th>
+            <th style="width:90px;">更新时间</th>
+            <th style="width:100px;">备注</th>
+        </tr>
+    </thead>
+    <tbody id="tbody">
+        <tr><td colspan="9" class="empty">点击查询按钮加载数据</td></tr>
+    </tbody>
+</table>
+</div>
+<div class="pagination" id="pagination"></div>
+</div>
+
+<script>
+const API_BASE = '/api/v1/workflow';
+const PAGE_SIZE = 10;
+let currentPage = 1;
+let totalPages = 1;
+let totalRecords = 0;
+
+const statusLabels = {
+    'RUNNING': '执行中',
+    'WAITING_REVIEW': '待审核',
+    'COMPLETED': '已完成',
+    'TERMINATED': '已终止',
+    'FAILED': '失败'
+};
+
+function search(page) {
+    currentPage = page || 1;
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    if (startDate && endDate && startDate > endDate) {
+        alert('开始日期不能大于结束日期！');
+        return;
+    }
+    const status = document.getElementById('status').value;
+    const requirement = document.getElementById('requirement').value.trim();
+    const threadId = document.getElementById('threadId').value.trim();
+    const params = new URLSearchParams();
+    if (startDate) params.set('startDate', startDate);
+    if (endDate) params.set('endDate', endDate);
+    if (status) params.set('status', status);
+    if (requirement) params.set('requirement', requirement);
+    if (threadId) params.set('threadId', threadId);
+    params.set('page', currentPage);
+    params.set('pageSize', PAGE_SIZE);
+
+    const tbody = document.getElementById('tbody');
+    const pagination = document.getElementById('pagination');
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">加载中...</td></tr>';
+
+    fetch(API_BASE + '/list?' + params.toString())
+        .then(r => r.json())
+        .then(json => {
+            const data = (json.data && json.data.records) ? json.data.records : [];
+            totalRecords = (json.data && json.data.total != null) ? json.data.total : data.length;
+            totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+            if (totalPages < 1) totalPages = 1;
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="empty">无匹配记录</td></tr>';
+                pagination.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            data.forEach((row, idx) => {
+                const comment = row.reviewFeedback || '';
+                const req = row.requirement || '';
+                const tid = esc(row.threadId);
+                html += '<tr>';
+                html += '<td><input type="checkbox" class="row-check" value="' + tid + '" data-status="' + esc(row.status) + '" onclick="handleCheckClick(this)"></td>';
+                html += '<td style="color:#999;font-size:12px;white-space:nowrap;text-align:center;">' + ((currentPage - 1) * PAGE_SIZE + idx + 1) + '</td>';
+                html += '<td><a href="workflow.html?threadId=' + encodeURIComponent(row.threadId) + '" target="_blank" class="thread-id-link">' + tid + '</a></td>';
+                html += '<td class="req-cell nowrap" title="' + esc(req) + '">' + esc(req) + '</td>';
+                html += '<td class="feedback-cell" title="' + esc(comment) + '">' + esc(comment.length > 100 ? comment.substring(0, 100) + '...' : comment) + '</td>';
+                html += '<td style="text-align:center;"><span class="status status-' + esc(row.status) + '">' + (statusLabels[row.status] || row.status) + '</span></td>';
+                html += '<td>' + formatTime(row.createTime) + '</td>';
+                html += '<td>' + formatTime(row.updateTime) + '</td>';
+                html += '<td class="remark-cell" title="' + esc(row.remark || '') + '">' + esc(row.remark || '') + '</td>';
+                html += '</tr>';
+            });
+            tbody.innerHTML = html;
+            renderPagination();
+        })
+        .catch(err => {
+            tbody.innerHTML = '<tr><td colspan="9" class="empty">查询失败: ' + err.message + '</td></tr>';
+        });
+}
+
+function renderPagination() {
+    const el = document.getElementById('pagination');
+    let html = '<span class="count-text">共 ' + totalRecords + ' 条记录</span>';
+    html += '<button onclick="search(' + (currentPage - 1) + ')"' + (currentPage <= 1 ? ' disabled' : '') + '>上一页</button>';
+    html += '<span class="current">第 ' + currentPage + ' / ' + totalPages + ' 页</span>';
+    html += '<button onclick="search(' + (currentPage + 1) + ')"' + (currentPage >= totalPages ? ' disabled' : '') + '>下一页</button>';
+    html += ' <select onchange="search(parseInt(this.value))">';
+    for (let i = 1; i <= totalPages; i++) {
+            html += '<option value="' + i + '"' + (i === currentPage ? ' selected' : '') + '>第 ' + i + ' 页</option>';
+        }
+        html += '</select>';
+    el.innerHTML = html;
+}
+
+function terminate(threadId) {
+    if (!confirm('请确认该流程是否真的需要终止？如果仍在正常执行中，终止后将丢失本次执行结果。\n\n确定要终止该流程吗？')) {
+        return;
+    }
+    fetch(API_BASE + '/terminate/' + encodeURIComponent(threadId), { method: 'POST' })
+        .then(r => r.json())
+        .then(json => {
+            if (json.code === 0) {
+                alert('已终止');
+                search(currentPage);
+            } else {
+                alert('终止失败: ' + (json.message || '未知错误'));
+            }
+        })
+        .catch(err => alert('终止失败: ' + err.message));
+}
+
+function esc(s) {
+    if (!s) return '';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatTime(t) {
+    if (!t) return '';
+    const d = new Date(t);
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+        + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+function pad(n) { return n < 10 ? '0'+n : n; }
+
+// 全选/取消全选
+function toggleSelectAll(checked) {
+    document.querySelectorAll('.row-check').forEach(cb => cb.checked = checked);
+}
+
+// 单个 checkbox 点击：若任一未勾选则取消全选
+function handleCheckClick(el) {
+    const all = document.querySelectorAll('.row-check');
+    const allChecked = all.length > 0 && Array.from(all).every(cb => cb.checked);
+    document.getElementById('selectAll').checked = allChecked;
+}
+
+// 查看选中流程的详情（仅打开第一个选中项）
+function openSelected() {
+    const checked = document.querySelectorAll('.row-check:checked');
+    if (checked.length === 0) {
+        alert('请先勾选要查看的流程');
+        return;
+    }
+    if (checked.length > 1) {
+        alert('一次只能查看一个流程详情');
+        return;
+    }
+    const threadId = checked[0].value;
+    window.open('workflow.html?threadId=' + encodeURIComponent(threadId), '_blank');
+}
+
+// 下载选中流程的项目代码
+function downloadSelected() {
+    const checked = document.querySelectorAll('.row-check:checked');
+    if (checked.length === 0) {
+        alert('请先勾选要下载代码的流程');
+        return;
+    }
+    const ids = Array.from(checked).map(cb => cb.value);
+    if (!confirm('确定要下载 ' + ids.length + ' 个流程的项目代码吗？')) return;
+    const params = new URLSearchParams();
+    ids.forEach(id => params.append('threadIds', id));
+    // 用 fetch 下载：JSON 错误时弹提示框，zip 时触发浏览器下载，避免新开标签页显示 JSON
+    fetch(API_BASE + '/download-code?' + params.toString())
+        .then(resp => {
+            const contentType = resp.headers.get('Content-Type') || '';
+            if (contentType.includes('application/json')) {
+                return resp.json().then(data => {
+                    alert(data.message || '下载失败：所选流程暂无可下载的项目文件');
+                    return null;
+                });
+            }
+            if (!resp.ok) {
+                alert('下载失败：HTTP ' + resp.status);
+                return null;
+            }
+            // 从 Content-Disposition 提取文件名
+            const cd = resp.headers.get('Content-Disposition') || '';
+            const m = cd.match(/filename="?([^"]+)"?/);
+            const filename = m ? m[1] : 'download-code.zip';
+            const failedHeader = resp.headers.get('X-Failed-ThreadIds');
+            return resp.blob().then(blob => ({ blob, filename, failedHeader }));
+        })
+        .then(result => {
+            if (!result) return;
+            const url = URL.createObjectURL(result.blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = result.filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            // 多选时提示哪些流程被跳过
+            if (result.failedHeader) {
+                const fids = result.failedHeader.split(',');
+                setTimeout(() => alert('以下流程代码未找到，已跳过：\n' + fids.map(id => 'projects-' + id).join('\n')), 500);
+            }
+        })
+        .catch(err => alert('下载失败：' + err.message));
+}
+
+// 批量终止选中流程（仅 RUNNING / WAITING_REVIEW 可终止）
+function terminateSelected() {
+    const checked = document.querySelectorAll('.row-check:checked');
+    if (checked.length === 0) {
+        alert('请先勾选要终止的流程');
+        return;
+    }
+    // 检查是否所有选中流程都可终止
+    const nonTerminable = Array.from(checked).filter(cb => {
+        const st = cb.getAttribute('data-status');
+        return st !== 'RUNNING' && st !== 'WAITING_REVIEW';
+    });
+    if (nonTerminable.length > 0) {
+        const labels = nonTerminable.map(cb => {
+            const st = cb.getAttribute('data-status');
+            return cb.value + '(' + (statusLabels[st] || st) + ')';
+        });
+        alert('以下流程不满足终止条件（仅执行中和待审核状态可终止），请取消勾选后重试：\n\n' + labels.join('\n'));
+        return;
+    }
+    const total = checked.length;
+    if (!confirm('确定要终止选中的 ' + total + ' 个流程吗？')) {
+        return;
+    }
+    let success = 0, done = 0;
+    checked.forEach(cb => {
+        const threadId = cb.value;
+        fetch(API_BASE + '/terminate/' + encodeURIComponent(threadId), { method: 'POST' })
+            .then(r => r.json())
+            .then(json => { if (json.code === 0) success++; })
+            .catch(() => {})
+            .finally(() => {
+                done++;
+                if (done === total) {
+                    alert('已终止 ' + success + ' / ' + total + ' 个流程');
+                    search(currentPage);
+                }
+            });
+    });
+}
+
+// 页面加载时自动查询
+search();
+</script>
+</body>
+</html>

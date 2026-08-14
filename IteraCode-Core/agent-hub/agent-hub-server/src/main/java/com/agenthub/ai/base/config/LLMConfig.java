@@ -20,8 +20,15 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.convert.DurationStyle;
+import org.springframework.boot.web.client.RestClientCustomizer;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import reactor.core.publisher.Flux;
+
+import java.net.http.HttpClient;
+import java.time.Duration;
 
 @Slf4j
 @Configuration
@@ -31,6 +38,29 @@ public class LLMConfig {
 
     private final ModelConfigProperties modelConfigProperties;
     private final DefaultListableBeanFactory beanFactory;
+
+    /** Ollama 请求超时时间，从 yml 配置读取 */
+    private Duration ollamaTimeout;
+
+    @PostConstruct
+    public void init() {
+        this.ollamaTimeout = parseTimeout(modelConfigProperties.getOllama().getTimeout());
+        log.info("Ollama 超时配置: {}s", ollamaTimeout.toSeconds());
+    }
+
+    /**
+     * 自定义 RestClient 超时，使 yml 中 spring.ai.ollama.timeout 配置生效。
+     * RestClientCustomizer 会应用到所有通过 RestClient.Builder 创建的 RestClient 实例（含 OllamaApi 内部）。
+     */
+    @Bean
+    public RestClientCustomizer ollamaRestClientCustomizer() {
+        return builder -> {
+            var httpClient = HttpClient.newBuilder()
+                    .connectTimeout(ollamaTimeout)
+                    .build();
+            builder.requestFactory(new JdkClientHttpRequestFactory(httpClient));
+        };
+    }
 
     /**
      * 启动后动态注册所有 ChatModel 和 ChatClient Bean
@@ -114,7 +144,20 @@ public class LLMConfig {
         if (baseUrl == null || baseUrl.isEmpty()) {
             baseUrl = "http://localhost:11434";
         }
+        log.info("Ollama API: baseUrl={}", baseUrl);
         return OllamaApi.builder().baseUrl(baseUrl).build();
+    }
+
+    private Duration parseTimeout(String timeoutStr) {
+        if (timeoutStr == null || timeoutStr.isBlank()) {
+            return Duration.ofSeconds(300);
+        }
+        try {
+            return DurationStyle.detectAndParse(timeoutStr);
+        } catch (Exception e) {
+            log.warn("Ollama timeout 配置解析失败: {}, 使用默认 300s", timeoutStr);
+            return Duration.ofSeconds(300);
+        }
     }
 
     private DashScopeApi buildDashScopeApi() {
@@ -126,10 +169,14 @@ public class LLMConfig {
     }
 
     private ChatModel createOllamaChatModel(OllamaApi ollamaApi, ModelConfigProperties.ModelConfig mc) {
-        OllamaChatOptions options = OllamaChatOptions.builder()
+        var builder = OllamaChatOptions.builder()
                 .model(mc.getModel())
                 .temperature(mc.getTemperature())
-                .build();
+                .numPredict(mc.getMaxTokens());
+        if (mc.getNumCtx() != null) builder.numCtx(mc.getNumCtx());
+        if (mc.getNumGPU() != null) builder.numGPU(mc.getNumGPU());
+        if (mc.getNumBatch() != null) builder.numBatch(mc.getNumBatch());
+        OllamaChatOptions options = builder.build();
         OllamaChatModel delegate = OllamaChatModel.builder()
                 .ollamaApi(ollamaApi)
                 .defaultOptions(options)

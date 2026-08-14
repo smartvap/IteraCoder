@@ -202,10 +202,11 @@ public class SkillLoader {
     // Spring AI StTemplateRenderer 使用 { } 作为 ST4 分隔符
     private static final Set<String> KNOWN_PLACEHOLDERS = Set.of(
             "requirement", "decomposition_result", "parallel_reasoning_result",
-            "generated_code", "harness_result", "repair_count",
+            "generated_code", "harness_result",
             "review_content", "review_decision",
             "review_feedback", "workflow_message", "workflow_status",
-            "current_data", "question_answer_context"
+            "current_data", "question_answer_context",
+            "max_repair_iterations", "repair_feedback"
     );
 
     // 匹配 {placeholder_name}，捕获其中的名称

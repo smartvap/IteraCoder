@@ -49,7 +49,8 @@ public class MultiRoundAgentNode implements NodeAction {
             "requirement", "decomposition_result", "parallel_reasoning_result",
             "generated_code", "harness_result", "repair_count",
             "review_content", "review_decision",
-            "review_feedback", "workflow_message", "workflow_status",
+            "review_feedback", "repair_feedback",
+            "workflow_message", "workflow_status",
             "current_data", "question_answer_context"
     );
 
@@ -81,7 +82,7 @@ public class MultiRoundAgentNode implements NodeAction {
 
         // Round 1: 流式调用
         log.info("MultiRoundAgent [{}] Round 1/{}", outputKey, maxRounds);
-        String prevOutput = streamCall(new Prompt(new UserMessage(fullInstruction)), state, allOutputs);
+        String prevOutput = streamCall(new Prompt(new UserMessage(fullInstruction)), state, allOutputs, maxRounds == 1);
 
         // [NOT_DEV_REQ] 标记：非研发需求，立即终止不走后续轮次
         if (RdWorkflowKeys.isNotDevReq(prevOutput)) {
@@ -95,7 +96,8 @@ public class MultiRoundAgentNode implements NodeAction {
                     prevOutput, taskPrefix, resolvedInstruction);
             allOutputs.append("\n\n");
             pushEventDelta(state, "\n\n");
-            String response = streamCall(new Prompt(new UserMessage(continuation)), state, allOutputs);
+            String response = streamCall(new Prompt(new UserMessage(continuation)), state, allOutputs,
+                    round == maxRounds);
 
             prevOutput = response;
             }
@@ -114,14 +116,15 @@ public class MultiRoundAgentNode implements NodeAction {
      * 流式调用 ChatModel，逐 token 追加到 buffer 并实时推送增量事件。
      * 推送增量而非全量，避免代码生成后期每个事件携带 20K+ 字符导致浏览器渲染卡顿。
      */
-    private String streamCall(Prompt prompt, OverAllState state, StringBuilder buffer) {
+    private String streamCall(Prompt prompt, OverAllState state, StringBuilder buffer, boolean isLastRound) {
         if (chatModel instanceof StreamingChatModel) {
+            log.info("MultiRoundAgent [{}] 使用流式调用, model={}", outputKey, chatModel.getClass().getSimpleName());
             StreamingChatModel streaming = (StreamingChatModel) chatModel;
             streaming.stream(prompt)
                     .doOnNext(chunk -> {
                         String text = chunk.getResult() != null && chunk.getResult().getOutput() != null
                                 ? chunk.getResult().getOutput().getText() : "";
-                        if (!text.isEmpty()) {
+                        if (text != null && !text.isEmpty()) {
                             buffer.append(text);
                             pushEventDelta(state, text);
                             if (buffer.length() % 500 == 0 || buffer.length() < 20) {
@@ -131,11 +134,12 @@ public class MultiRoundAgentNode implements NodeAction {
                     })
                     .doOnComplete(() -> log.info("MultiRoundAgent [{}] 流式完成，总字符: {}", outputKey, buffer.length()))
                     .blockLast();
-            // 清空增量节流缓存，推送本轮完整内容保证前端最终一致性
-            flushDelta(state);
+            // 仅最后一轮刷新节流缓冲，避免中途触发前端"完成"状态
+            if (isLastRound) flushDelta(state);
             return buffer.toString();
         }
         // 回退到阻塞调用
+        log.info("MultiRoundAgent [{}] 非流式调用(阻塞), model={}", outputKey, chatModel.getClass().getSimpleName());
         String result = chatModel.call(prompt).getResult().getOutput().getText();
         buffer.append(result);
         return result;
@@ -180,6 +184,7 @@ public class MultiRoundAgentNode implements NodeAction {
         appendStateValue(sb, state, "generated_code", "当前代码");
         appendStateValue(sb, state, "harness_result", "沙箱验证结果");
         appendStateValue(sb, state, "review_feedback", "审核反馈意见");
+        appendStateValue(sb, state, "repair_feedback", "系统修复反馈");
         appendStateValue(sb, state, "repair_count", "修复次数");
         return sb.toString();
     }
@@ -208,6 +213,17 @@ public class MultiRoundAgentNode implements NodeAction {
                     if (v instanceof Message msg) {
                         return msg.getText();
                     }
+                    // GraphResponse（asNode 直接输出时存为 GraphResponse<AssistantMessage>）
+                    try {
+                        java.lang.reflect.Method m = v.getClass().getMethod("resultValue");
+                        Object opt = m.invoke(v);
+                        if (opt instanceof java.util.Optional<?> o && o.isPresent()) {
+                            Object inner = o.get();
+                            if (inner instanceof AssistantMessage msg) return msg.getText();
+                            if (inner instanceof Message msg) return msg.getText();
+                            return inner.toString();
+                        }
+                    } catch (Exception ignored) {}
                     return v.toString();
                 })
                 .orElse("");
@@ -270,8 +286,6 @@ public class MultiRoundAgentNode implements NodeAction {
         long now = System.currentTimeMillis();
         if (now - ts.lastPushTime > 50 || ts.pending.length() > 80) {
             eventBus.publishDelta(threadId, outputKey, ts.pending.toString(), "RUNNING");
-            log.debug("MultiRoundAgent [{}] 推送增量: {} 字符, 间隔 {} ms",
-                    outputKey, ts.pending.length(), now - ts.lastPushTime);
             ts.pending.setLength(0);
             ts.lastPushTime = now;
         }

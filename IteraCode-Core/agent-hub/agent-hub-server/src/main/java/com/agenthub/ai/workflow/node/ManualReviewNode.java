@@ -126,6 +126,15 @@ public class ManualReviewNode implements NodeAction {
             }
         } catch (Exception e) {
             log.warn("智能体 摘要生成失败，跳过摘要", e);
+            publishWarning(state, "AI 摘要生成失败，将直接展示原始推理结果: " + e.getMessage());
+        }
+    }
+
+    private void publishWarning(OverAllState state, String message) {
+        if (eventBus == null) return;
+        String threadId = state.value(MultiRoundAgentNode.THREAD_ID_KEY).map(Object::toString).orElse(null);
+        if (threadId != null) {
+            eventBus.publish(threadId, RdWorkflowKeys.WORKFLOW_MESSAGE, "⚠️ " + message, "RUNNING");
         }
     }
 

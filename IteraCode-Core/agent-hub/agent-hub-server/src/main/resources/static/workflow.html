@@ -300,6 +300,7 @@
             white-space: pre-wrap;
             word-break: break-all;
             max-height: 300px;
+            min-height: 40px;
             overflow-y: auto;
             border-radius: 0 4px 4px 0;
         }
@@ -307,7 +308,7 @@
 </head>
 <body>
 <h1>智能体研发工作流管理控制台</h1>
-<p class="subtitle">StateGraph + ReactAgent 智能体工作流：需求拆解 → 并行推理 → 人工审核</p>
+<p class="subtitle">StateGraph + ReactAgent 智能体工作流：需求拆解 → 并行推理 → 人工审核 → 代码生成</p>
 
 <!-- ==================== 1. 启动工作流 ==================== -->
 <div class="section">
@@ -317,12 +318,22 @@
         <textarea id="requirement" rows="3" placeholder="请输入原始研发需求，例如：开发一个java项目，实现pdf转word功能"></textarea>
     </div>
     <div class="btn-row">
-        <button class="primary" onclick="startWorkflow()">启动智能体工作流</button>
+        <button id="btnStart" class="primary" onclick="startWorkflow()">启动智能体工作流</button>
     </div>
     <div class="tip">提交后将执行需求拆解 → 并行推理，并在人工审核节点自动暂停</div>
 </div>
 
-<input type="hidden" id="resumeThreadId">
+<!-- ==================== 2. 查询/恢复工作流（页面刷新后使用） ==================== -->
+<div class="section">
+    <h2><span class="badge get">GET</span> 查询智能体工作流状态</h2>
+    <div class="form-row">
+        <label for="queryThreadId">Thread ID</label>
+        <input type="text" id="queryThreadId" placeholder="输入智能体工作流 threadId">
+        <button class="info" onclick="queryState()">查询</button>
+    </div>
+    <input type="hidden" id="resumeThreadId">
+    <div class="tip">页面刷新后可通过 Thread ID 查询之前的智能体工作流状态</div>
+</div>
 
 <!-- 加载 & 结果 -->
 <div id="loading"></div>
@@ -346,10 +357,16 @@
             <button id="btnSentBack" class="warning" onclick="resumeWorkflow('SENT_BACK')">↩ 驳回 (SENT_BACK)</button>
             <button id="btnTerminate" class="danger"  onclick="resumeWorkflow('TERMINATED')">✗ 拒绝 (TERMINATED)</button>
         </div>
-        <div class="tip">通过 → 审核通过，智能体工作流完成 | 驳回 → 回到需求拆解 | 拒绝 → 终止流程</div>
+        <div class="tip">通过 → 进入代码生成 | 驳回 → 回到需求拆解 | 拒绝 → 终止流程</div>
     </div>
     <!-- 终态信息区域（COMPLETED / TERMINATED / FAILED 时显示） -->
     <div id="finalStatus" style="display:none;margin-top:16px;padding:12px;border-radius:6px;"></div>
+    <!-- 恢复执行区域（RUNNING / FAILED 状态显示） -->
+    <div id="recoverSection" style="display:none;margin-top:16px;padding:12px;border-radius:6px;background:#e3f2fd;border:1px solid #90caf9;">
+        <strong style="color:#1565c0;" id="recoverTitle">🔁 工作流处于执行中状态</strong>
+        <span style="color:#1565c0;font-size:12px;margin-left:8px;">可从 checkpoint 恢复</span>
+        <button class="info" onclick="recoverWorkflow()" style="margin-left:16px;">▶ 恢复执行</button>
+    </div>
 </div>
 <div id="result" class="result-panel"></div>
 
@@ -366,6 +383,7 @@
         { key: '_reasoning',                name: '并行推理' },
         { key: 'parallel_reasoning_result', name: '合并推理结果' },
         { key: '_review',                   name: '等待人工审核' },
+        { key: 'generated_code',            name: '代码生成' },
     ];
 
     function nowStr() {
@@ -385,7 +403,7 @@
         'review_content':                       '审核内容',
         'review_decision':                      '审核决定（APPROVED/驳回）',
         'review_feedback':                      '审核备注/驳回原因',
-        'repair_count':                         '修复次数',
+        'generated_code':                       'AI 生成代码',
         '_graph_execution_id_':                 '工作流实例ID',
     };
 
@@ -470,7 +488,17 @@
         if (step.key === 'parallel_reasoning_result') {
             return state['workflow_status'] === 'WAITING_REVIEW' || !!state['review_content'];
         }
+        if (step.key === 'generated_code') {
+            return state['code_project_root'] != null;
+        }
         return state[step.key] != null;
+    }
+
+    function hasReasoningOutput(state) {
+        for (const k of Object.keys(state)) {
+            if (/^reasoning_.+_result$/.test(k) && state[k]) return true;
+        }
+        return false;
     }
 
     /** SSE 事件键是否匹配进度步骤键 */
@@ -490,7 +518,7 @@
             if (!req || !req.trim()) return ''; // 无实际数据时显示"思考中..."
             let content = '【研发需求】\n' + req;
             const feedback = state['review_feedback'];
-            if (feedback && feedback.trim()) {
+            if (feedback && feedback.trim() && !req.includes(feedback.trim())) {
                 content += '\n\n【审核备注】\n' + feedback;
             }
             return content;
@@ -508,7 +536,36 @@
         }
         if (key === 'parallel_reasoning_result') return state['parallel_reasoning_result'] || '';
         if (key === '_review') return state['review_content'] || '';
+        if (key === 'generated_code') return state['generated_code'] || '';
         return '';
+    }
+
+    /**
+     * 从沙箱验证结果中提取关键行，忽略 Spring Boot 日志等噪音。
+     * 展示：成功/失败标记、编译错误、构建结果、异常堆栈。
+     * 无关键行时回退原文（防止全丢失）。
+     */
+    function extractHarnessKeyLines(hr) {
+        if (!hr) return '';
+        const keyLines = [];
+        for (const l of hr.split('\n')) {
+            const t = l.trim();
+            if (/^(COMPILE|TEST|RUNTIME)_(SUCCESS|FAILED|ERROR)/.test(t)          // COMPILE_SUCCESS: true 等
+                || t.indexOf('[ERROR]') > -1                                       // 编译错误
+                || t.indexOf('BUILD FAILURE') > -1 || t.indexOf('BUILD SUCCESS') > -1
+                || t.indexOf('cannot find symbol') > -1 || t.indexOf('Caused by:') > -1
+                || t.indexOf('APPLICATION FAILED') > -1) {                          // 启动失败
+                keyLines.push(l);
+            }
+        }
+        return keyLines.length > 0 ? keyLines.join('\n') : truncateHarnessFallback(hr);
+    }
+
+    /** 兜底：无关键行时截断显示原文，避免超长日志刷屏 */
+    function truncateHarnessFallback(hr) {
+        const MAX = 800;
+        if (hr.length <= MAX) return hr;
+        return hr.substring(0, MAX) + '\n... (内容过长，已截断)';
     }
 
     function resolveActiveStepKey(state, sseActiveKey) {
@@ -538,13 +595,23 @@
         if (sseActiveKey && now - (sseMap[sseActiveKey] || 0) < 15000) {
             if (sseActiveKey === 'parallel_reasoning_result') return 'parallel_reasoning_result';
             if (sseActiveKey === 'review_content') return '_review';
+            if (sseActiveKey === 'generated_code') return sseActiveKey;
         }
 
-        // 默认：第一个未完成的步骤
+        // 默认：优先取最近有 SSE 更新的未完成步骤（修复循环/编译中精准定位活跃步骤）；
+        // 都没有更新时才取第一个未完成步骤
+        let firstIncomplete = null;
+        let best = null, bestAge = Infinity;
         for (const step of WORKFLOW_STEPS) {
-            if (!checkStepDone(state, step)) return step.key;
+            if (checkStepDone(state, step)) continue;
+            if (!firstIncomplete) firstIncomplete = step.key;
+            const lu = sseMap[step.key];
+            if (lu) {
+                const age = now - lu;
+                if (age < bestAge) { bestAge = age; best = step.key; }
+            }
         }
-        return null;
+        return best || firstIncomplete;
     }
 
     function getStallHint(stepKey) {
@@ -595,9 +662,6 @@
 
         // 判断是否处于"等待人工审核"暂停态——此时不应有 active 步骤
         const isWaitingReview = state['workflow_status'] === 'WAITING_REVIEW';
-        if (isWaitingReview) {
-            setResumeButtonsEnabled(true);
-        }
         const activeStepKey = resolveActiveStepKey(state, sseActiveKey);
 
         // 增量更新每个步骤
@@ -633,21 +697,34 @@
 
             // 更新内容：只有 done 或 active 步骤显示内容
             const bodyEl = stepEl.querySelector('.step-body');
-            const content = (done || cls === 'active') ? getStepContent(state, step) : '';
+            const hasContent = (step.key === 'validation_passed' || step.key === 'harness_result') 
+                && state[step.key] != null;
+            const showContent = done || cls === 'active' || hasContent;
+            const content = showContent ? getStepContent(state, step) : '';
 
             if (content) {
-                if (bodyEl.textContent !== content) {
+                // 使用独立文本 span，避免 textContent 清除 stall-indicator 子元素
+                var textEl = bodyEl.querySelector('.step-text');
+                if (!textEl) {
+                    // 清除旧 innerHTML 残留的"思考中..."（从无内容→有内容过渡时遗留）
+                    if (bodyEl.getAttribute('data-thinking')) {
+                        bodyEl.innerHTML = '';
+                    }
+                    textEl = document.createElement('span');
+                    textEl.className = 'step-text';
+                    bodyEl.appendChild(textEl);
+                }
+                if (textEl.textContent !== content) {
                     const wasAtBottom = cls === 'active' && !bodyEl._userScrolled;
-                    bodyEl.textContent = content;
+                    textEl.textContent = content;
                     bodyEl.style.display = '';
                     bodyEl.removeAttribute('data-thinking');
                     if (wasAtBottom) {
                         bodyEl.scrollTop = bodyEl.scrollHeight;
                     }
-                    // 新内容到达时重置用户滚动标记，后续 stall hint 可继续自动滚动
                     bodyEl._userScrolled = false;
                 }
-                // stall hint：单独的元素，用 innerHTML 渲染动画点
+                // stall hint：步骤 active 时检测停顿，显示在内容下方
                 const stallText = cls === 'active' ? getStallHint(step.key) : '';
                 let stallEl = stepEl.querySelector('.stall-indicator');
                 const hadStall = stallEl && stallEl.style.display !== 'none';
@@ -682,6 +759,7 @@
                 }
             }
         });
+
     }
 
     /**
@@ -697,10 +775,28 @@
         $('finalStatus').style.display = 'none';   // 隐藏终态区域
 
         const state = {};
+        window._workflowState = state;
         let lastSseKey = null;
         let sseErrorCount = 0;
+        // 修复循环轮次追踪：检测 repair_count 递增 / repair_feedback 变化 来识别新轮次
+        let lastRepairCount = 0;
+        let lastRepairFeedback = '';
         // 记录每个 SSE key 最后一次事件到达的时间戳（全局可访问，供 getStallHint 使用）
         window._sseLastUpdate = {};
+
+        // 检测"新一轮修复开始了"（两种信号任一触发即判定新轮次）
+        function isNewRepairRound(key, value) {
+            if (key === 'repair_count') {
+                const c = parseInt(value) || 0;
+                if (c !== lastRepairCount) { lastRepairCount = c; return true; }
+            }
+            if (key === 'repair_feedback') {
+                const f = String(value || '');
+                if (f !== lastRepairFeedback) { lastRepairFeedback = f; return true; }
+            }
+            return false;
+        }
+
         const sseLastUpdate = window._sseLastUpdate;
 
         if (preserveContent) {
@@ -713,7 +809,7 @@
                         for (const [k, v] of Object.entries(json.data.state)) {
                             state[k] = v;
                         }
-                        // 渲染：SSE 事件更新状态，并检查人工审核是否完成
+                        // 渲染：已有步骤标记 done，代码生成标记 active（自动显示"思考中..."）
                         renderProgress(state, null);
                     }
                 }).catch(function(){});
@@ -730,13 +826,25 @@
 
             // SSE 实时事件
             es.onmessage = function(e) {
+                // SSE 事件到达说明工作流正在执行中，隐藏恢复执行横幅
+                setRecoverVisible(false);
                 try {
                     const d = JSON.parse(e.data);
                     if (d.key && d.value != null) {
+                        // 修复循环新轮次检测：reset CODE_REPAIR_ANALYSIS
+                        if (isNewRepairRound(d.key, d.value)) {
+                            state['code_repair_analysis'] = '';
+                        }
+
                         // 增量事件：追加拼接；全量事件：直接覆盖
                         const isDelta = !!d._delta;
+                        // 修复循环进行中：CODE_REPAIR_ANALYSIS 拒绝非增量覆盖（防止 checkpoint 轮询清空）
+                        const repairOngoing = (parseInt(state['repair_count']) || 0) > 0
+                            && state['validation_passed'] !== 'true' && state['validation_passed'] !== true;
                         if (isDelta) {
                             state[d.key] = (state[d.key] || '') + d.value;
+                        } else if (d.key === 'code_repair_analysis' && repairOngoing && state[d.key] && state[d.key].length > 0) {
+                            // 修复循环中已有累积内容，拒绝非增量覆盖以保证新轮次内容不被 checkpoint 清空
                         } else {
                             // 推理启动空信号：保留已有增量，不覆盖
                             if (/^reasoning_.+_result$/.test(d.key) && d.value === '' && state[d.key]) {
@@ -806,8 +914,26 @@
                     .then(r => r.json())
                     .then(json => {
                         if (json.code === 0 && json.data && json.data.state) {
+                            // 检测终态：SSE 事件可能被错过，轮询兜底触发终态处理
+                            const newStatus = json.data.status;
+                            if (newStatus && newStatus !== 'RUNNING') {
+                                handleWorkflowFinished(threadId, newStatus);
+                                return;
+                            }
                             let updated = false;
+                            // 跳过"最近 15 秒内活跃的流式 key"：这些 key 正由 SSE 增量追加接管，
+                            // 轮询的全量覆盖会用 checkpoint 旧值覆盖已累积内容导致"清空重来"。
+                            const nowTs = Date.now();
+                            const activeKeys = new Set();
+                            for (const k of Object.keys(sseLastUpdate)) {
+                                if (nowTs - sseLastUpdate[k] < 15000) activeKeys.add(k);
+                            }
                             for (const [k, v] of Object.entries(json.data.state)) {
+                                if (activeKeys.has(k)) continue;
+                                // 修复循环中：CODE_REPAIR_ANALYSIS 拒绝轮询覆盖（防止 checkpoint 清空流式累积内容）
+                                const repairActive = (parseInt(state['repair_count']) || 0) > 0
+                                    && state['validation_passed'] !== 'true' && state['validation_passed'] !== true;
+                                if (k === 'code_repair_analysis' && repairActive && state[k] && state[k].length > 0) continue;
                                 if (state[k] !== v) {
                                     state[k] = v;
                                     updated = true;
@@ -842,28 +968,55 @@
             .then(json => {
                 if (json.code === 0) {
                     const data = json.data;
+                    // 修复竞态：SSE 先收到 WAITING_REVIEW，但 /state 可能尚未更新（checkpoint 写入延迟）
+                    const effectiveStatus = (knownStatus === 'WAITING_REVIEW' && data.status === 'RUNNING')
+                        ? 'WAITING_REVIEW' : data.status;
                     // 用完整 State 渲染进度条（补上非 MultiRoundAgentNode 节点的输出）
                     // 注入终态 workflow_status：checkpoint 保存于终态前节点，不含终态标记
                     if (data.state) {
-                        data.state['workflow_status'] = data.status;
+                        // 合并 SSE 已累积的字段：/state 的 checkpoint 可能因写入时序缺失
+                        // review_content 等字段（尤其 WAITING_REVIEW 暂停时），保留前端已有值
+                        if (window._workflowState) {
+                            for (const k of Object.keys(window._workflowState)) {
+                                if (window._workflowState[k] != null && data.state[k] == null) {
+                                    data.state[k] = window._workflowState[k];
+                                }
+                            }
+                        }
+                        data.state['workflow_status'] = effectiveStatus;
                         renderProgress(data.state, null);
                     }
 
-                    if (data.status === 'WAITING_REVIEW') {
-                        console.log('[handleWorkflowFinished] → WAITING_REVIEW，启用审核按钮');
-                        // 等待人工审核：启用审核操作按钮
+        if (effectiveStatus === 'WAITING_REVIEW') {
+            console.log('[handleWorkflowFinished] → WAITING_REVIEW，启用审核按钮');
+            // 等待人工审核：启用审核操作按钮
                         $('resumeThreadId').value = threadId;
                         setResumeButtonsEnabled(true);
                         $('finalStatus').style.display = 'none';
-                    } else if (data.status === 'RUNNING') {
-                        console.log('[handleWorkflowFinished] → RUNNING，重新监听');
-                        // 工作流仍在执行中（收到了残留的旧终态事件，后端 clearEvents 后不应再出现）
-                        // 兜底：重新启动 SSE 监听，保留已有内容
-                        listenEvents(threadId, true);
-                    } else {
-                        console.log('[handleWorkflowFinished] → ' + data.status + '，显示终态');
-                        // COMPLETED / TERMINATED / FAILED：在进度面板底部展示终态信息
+                        setRecoverVisible(false);
+                    } else if (effectiveStatus === 'RUNNING' || effectiveStatus === 'FAILED') {
+                        console.log('[handleWorkflowFinished] → ' + effectiveStatus + '，重新监听/恢复');
                         setResumeButtonsEnabled(false);
+                        // FAILED：流已死，不启动 SSE，只显示恢复 + 错误
+                        if (effectiveStatus === 'FAILED') {
+                            setRecoverVisible(true, effectiveStatus);
+                            showFinalStatus(data);
+                        } else {
+                            listenEvents(threadId, true);
+                            setRecoverVisible(true, effectiveStatus);
+                            $('finalStatus').style.display = 'none';
+                        }
+                    } else {
+                        console.log('[handleWorkflowFinished] → ' + effectiveStatus + '，显示终态');
+                        console.log('[handleWorkflowFinished] window._workflowState keys:', window._workflowState ? Object.keys(window._workflowState).join(',') : 'null');
+                        console.log('[handleWorkflowFinished] code_project_root=', window._workflowState ? window._workflowState['code_project_root'] : 'null');
+                        console.log('[handleWorkflowFinished] generated_code length=', window._workflowState ? (window._workflowState['generated_code'] || '').length : 0);
+                        // COMPLETED / TERMINATED：直接用 SSE 累积状态渲染，不依赖 checkpoint
+                        setResumeButtonsEnabled(false);
+                        if (window._workflowState) {
+                            window._workflowState['workflow_status'] = effectiveStatus;
+                            renderProgress(window._workflowState, null);
+                        }
                         showFinalStatus(data);
                     }
                 } else {
@@ -886,12 +1039,19 @@
         const c = colors[status] || colors['FAILED'];
         let html = '<div style="background:' + c.bg + ';color:' + c.text + ';padding:12px;border-radius:6px;border:1px solid ' + c.border + ';">';
         html += '<strong style="font-size:14px;">' + c.icon + ' 工作流' + status + '</strong>';
-        if (data.message) {
-            html += '<div style="margin-top:4px;font-size:13px;">' + escapeHtml(data.message) + '</div>';
+        const sseMsg = window._workflowState && window._workflowState['workflow_message'];
+        const message = (sseMsg && sseMsg !== '工作流已启动') ? sseMsg : (data.message || '');
+        console.log('[showFinalStatus] status=' + status + ', sseMsg=' + JSON.stringify(sseMsg) + ', data.message=' + JSON.stringify(data.message));
+        if (message && message !== '工作流已启动') {
+            html += '<div style="margin-top:4px;font-size:13px;">' + escapeHtml(message) + '</div>';
+        }
+        if (status === 'COMPLETED') {
+            html += '<div style="margin-top:8px;padding:10px;background:#e3f2fd;border-radius:4px;font-size:14px;font-weight:bold;text-align:center;">🚀 进入沙箱验证</div>';
         }
         html += '</div>';
         el.innerHTML = html;
         el.style.display = 'block';
+        if (status !== 'FAILED') setRecoverVisible(false);
     }
 
     function closeEvents() {
@@ -904,6 +1064,15 @@
         ['btnApprove', 'btnSentBack', 'btnTerminate'].forEach(function(id) {
             $(id).disabled = !enabled;
         });
+        if (enabled) setRecoverVisible(false);
+    }
+
+    function setRecoverVisible(visible, status) {
+        $('recoverSection').style.display = visible ? 'block' : 'none';
+        if (visible && status) {
+            const title = status === 'FAILED' ? '⚠️ 工作流执行失败' : '🔁 工作流处于执行中状态';
+            $('recoverTitle').textContent = title;
+        }
     }
 
     function renderResult(data) {
@@ -947,11 +1116,78 @@
         }
     }
 
+    // ---------- 2. 查询状态 ----------
+    async function queryState() {
+        const threadId = $('queryThreadId').value.trim();
+        if (!threadId) { alert('请输入 threadId'); return; }
+
+        showLoading();
+        try {
+            const res = await fetch(API_BASE + '/state/' + encodeURIComponent(threadId));
+            const json = await res.json();
+            if (json.code === 0) {
+                hideLoading();
+                const d = json.data;
+                // 在进度面板中展示查询结果
+                $('progress').classList.add('show');
+                $('progressThreadId').textContent = 'Thread: ' + threadId;
+                $('steps').innerHTML = '';
+                $('finalStatus').style.display = 'none';
+                if (d.state) {
+                    d.state['workflow_status'] = d.status;
+                    // 兜底：checkpoint 可能缺 code_project_root，有生成代码就视为已写出
+                    if (d.status === 'COMPLETED' && d.state['generated_code'] && !d.state['code_project_root']) {
+                        d.state['code_project_root'] = d.state['generated_code'];
+                    }
+                    renderProgress(d.state, null);
+                    // 回填研发需求到输入框
+                    const req = d.state['requirement'];
+                    if (req) {
+                        $('requirement').value = req;
+                        $('requirement').disabled = true;
+                        $('btnStart').disabled = true;
+                    }
+                }
+
+                if (d && d.status === 'WAITING_REVIEW') {
+                    $('resumeThreadId').value = threadId;
+                    setResumeButtonsEnabled(true);
+                    setRecoverVisible(false);
+                } else if (d && (d.status === 'RUNNING' || d.status === 'FAILED')) {
+                    // RUNNING：可能中断，启动 SSE 监听；FAILED：流已死，只显示恢复
+                    setResumeButtonsEnabled(false);
+                    if (d.status === 'RUNNING') {
+                        listenEvents(threadId, true);
+                        $('finalStatus').style.display = 'none';
+                    } else {
+                        showFinalStatus(d);
+                    }
+                    setRecoverVisible(true, d.status);
+                } else if (d) {
+                    setResumeButtonsEnabled(false);
+                    setRecoverVisible(false);
+                    showFinalStatus(d);
+                }
+            } else {
+                showResult('<p style="color:red;">错误：' + escapeHtml(json.message || '未知错误') + '</p>', true);
+            }
+        } catch (err) {
+            showResult('<p style="color:red;">请求失败：' + escapeHtml(err.message) + '</p>', true);
+        }
+    }
+
     // ---------- 3. 恢复工作流 ----------
     async function resumeWorkflow(decision) {
         const threadId = $('resumeThreadId').value.trim();
         const comment = $('comment').value.trim();
         if (!threadId) { alert('请输入 threadId'); return; }
+
+        const prompts = {
+            'APPROVED': '确认通过审核吗？通过后将进入代码生成阶段。',
+            'SENT_BACK': '确认驳回吗？驳回后将重新回到需求拆解阶段。',
+            'TERMINATED': '确认拒绝吗？拒绝后该流程将被终止且不可恢复。'
+        };
+        if (!confirm(prompts[decision])) return;
 
         hideLoading();
         $('result').classList.remove('show', 'error');
@@ -988,8 +1224,52 @@
         }
     }
 
+    // 回车快捷查询
+    $('queryThreadId').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') queryState();
+    });
+
     // 初始状态：审核按钮默认禁用
     setResumeButtonsEnabled(false);
+
+    function setRecoverVisible(visible, status) {
+        $('recoverSection').style.display = visible ? 'block' : 'none';
+        if (visible && status) {
+            const title = status === 'FAILED' ? '⚠️ 工作流执行失败' : '🔁 工作流处于执行中状态';
+            $('recoverTitle').textContent = title;
+        }
+    }
+
+    // 从 checkpoint 恢复执行（服务重启后）
+    async function recoverWorkflow() {
+        const threadId = $('queryThreadId').value.trim() || $('resumeThreadId').value.trim();
+        if (!threadId) { alert('请输入 threadId'); return; }
+        if (!confirm('确定要从 checkpoint 恢复执行吗？')) return;
+
+        try {
+            const res = await fetch(API_BASE + '/recover/' + encodeURIComponent(threadId), { method: 'POST' });
+            const json = await res.json();
+            if (json.code === 0) {
+                // 开始 SSE 监听
+                listenEvents(threadId, true);
+                setRecoverVisible(false);
+            } else {
+                alert('恢复失败：' + (json.message || '未知错误'));
+            }
+        } catch (err) {
+            alert('恢复失败：' + err.message);
+        }
+    }
+
+    // URL 参数自动查询：从 workflow-history.html 跳转过来
+    (function() {
+        const params = new URLSearchParams(window.location.search);
+        const tid = params.get('threadId');
+        if (tid) {
+            $('queryThreadId').value = tid;
+            queryState();
+        }
+    })();
 </script>
 </body>
 </html>

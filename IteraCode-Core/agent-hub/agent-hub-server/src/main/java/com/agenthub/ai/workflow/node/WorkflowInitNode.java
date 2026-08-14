@@ -32,12 +32,18 @@ public class WorkflowInitNode implements NodeAction {
         Map<String, Object> result = new HashMap<>();
         // 显式透传 requirement，防止框架在节点间丢失初始输入
         result.put(RdWorkflowKeys.REQUIREMENT, requirement);
-        result.put(RdWorkflowKeys.REPAIR_COUNT, 0);
         result.put(RdWorkflowKeys.WORKFLOW_STATUS, "RUNNING");
         result.put(RdWorkflowKeys.WORKFLOW_MESSAGE, "工作流已启动");
-        // 初始化审核字段为空串，避免 STS 模板引擎严格模式因占位符缺失抛异常
-        result.put(RdWorkflowKeys.REVIEW_DECISION, "");
-        result.put(RdWorkflowKeys.REVIEW_FEEDBACK, "");
+        // 初始化审核字段为空串，避免 STS 模板引擎严格模式因占位符缺失抛异常。
+        // 但如果已有值（如 SENT_BACK 驳回重跑、recover 恢复），则保留不覆盖。
+        String existingDecision = String.valueOf(state.value(RdWorkflowKeys.REVIEW_DECISION).orElse(""));
+        String existingFeedback = String.valueOf(state.value(RdWorkflowKeys.REVIEW_FEEDBACK).orElse(""));
+        if (existingDecision.isEmpty()) {
+            result.put(RdWorkflowKeys.REVIEW_DECISION, "");
+        }
+        if (existingFeedback.isEmpty()) {
+            result.put(RdWorkflowKeys.REVIEW_FEEDBACK, "");
+        }
 
         publish(state, RdWorkflowKeys.REQUIREMENT, requirement.toString());
         publish(state, RdWorkflowKeys.WORKFLOW_STATUS, "RUNNING");

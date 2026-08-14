@@ -33,4 +33,7 @@ public class WorkflowMetadata {
 
     /** 最后更新时间 */
     private Date updateTime;
+
+    /** 备注（手动终止原因/服务重启自动终止等） */
+    private String remark;
 }

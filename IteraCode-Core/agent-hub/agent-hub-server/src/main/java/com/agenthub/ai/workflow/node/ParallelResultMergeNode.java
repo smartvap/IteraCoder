@@ -96,6 +96,7 @@ public class ParallelResultMergeNode implements NodeAction {
             }
         } catch (Exception e) {
             log.warn("LLM 融合失败，回退到简单拼接", e);
+            publishWarning(state, "LLM 智能融合失败，已降级为简单拼接: " + e.getMessage());
             mergedBuilder.setLength(0);
             mergedBuilder.append(rawOutputs.toString());
         }
@@ -126,6 +127,14 @@ public class ParallelResultMergeNode implements NodeAction {
         String threadId = state.value(MultiRoundAgentNode.THREAD_ID_KEY).map(Object::toString).orElse(null);
         if (threadId != null) {
             eventBus.publishDelta(threadId, RdWorkflowKeys.PARALLEL_REASONING_RESULT, delta, "RUNNING");
+        }
+    }
+
+    private void publishWarning(OverAllState state, String message) {
+        if (eventBus == null) return;
+        String threadId = state.value(MultiRoundAgentNode.THREAD_ID_KEY).map(Object::toString).orElse(null);
+        if (threadId != null) {
+            eventBus.publish(threadId, RdWorkflowKeys.WORKFLOW_MESSAGE, "⚠️ " + message, "RUNNING");
         }
     }
 

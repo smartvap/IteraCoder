@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.workflow.mapper.WorkflowMetadataMapper">
+
+    <!-- 查该线程最新 checkpoint 的主键（确定性排序） -->
+    <select id="selectLatestCheckpointId" resultType="string">
+        SELECT c.checkpoint_id
+        FROM GRAPH_CHECKPOINT c
+          INNER JOIN GRAPH_THREAD t ON c.thread_id = t.thread_id
+        WHERE t.thread_name = #{threadName} AND t.is_released != TRUE
+        ORDER BY c.saved_at DESC, c.checkpoint_id DESC
+        LIMIT 1
+    </select>
+
+    <!-- 按主键取 checkpoint 的 state_data -->
+    <select id="selectCheckpointStateData" resultType="string">
+        SELECT state_data FROM GRAPH_CHECKPOINT WHERE checkpoint_id = #{checkpointId}
+    </select>
+
+</mapper>

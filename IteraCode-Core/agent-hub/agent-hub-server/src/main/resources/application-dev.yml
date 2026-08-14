@@ -1,7 +1,7 @@
 spring:
   mvc:
     async:
-      request-timeout: 600000
+      request-timeout: 3600000
   ai:
     openai:
       api-key: ${ZPAPIKEY}
@@ -10,18 +10,29 @@ spring:
       api-key: ${LIAPIKEY}
     ollama:
       base-url: http://localhost:11434
-      timeout: 30s
+      timeout: 60s
     models:
       - name: gemma2
         type: ollama
         model: gemma2:2b
         temperature: 0.7
-        max-tokens: 512
-      - name: qwen3
+        max-tokens: 4096
+      - name: qwen3:8b-q4_K_M
+        type: ollama
+        model: qwen3:8b-q4_K_M
+        temperature: 0.5
+        max-tokens: 3072
+        num-ctx: 3072
+        num-gpu: 22
+        num-batch: 256
+      - name: qwen3:4b
         type: ollama
         model: qwen3:4b
         temperature: 0.5
-        max-tokens: 1024
+        max-tokens: 4096
+        num-ctx: 3072
+        num-gpu: 22
+        num-batch: 256
       - name: glm-5.1
         type: dashscope
         model: glm-5.1
@@ -33,17 +44,19 @@ spring:
         temperature: 0.5
         max-tokens: 8192
       - name: deepseek-v4-pro
-        type: dashscope
+        type: openai
         model: deepseek-v4-pro
         temperature: 0.5
         max-tokens: 8192
+        base-url: https://api.deepseek.com
+        api-key: ${DEEPSEEKAPIKEY}
       - name: glm-4.7-flash
         type: openai
         model: glm-4.7-flash
         temperature: 0.5
         max-tokens: 8192
         completions-path: /v4/chat/completions
-    primary: qwen3
+    primary: qwen3:8b-q4_K_M
 
   autoconfigure:
     exclude:
@@ -66,17 +79,28 @@ spring:
 
   datasource:
     username: root
-    password: root@123456
-    url: jdbc:mysql://111.10.175.134:3307/ai_server?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
+    password: 123456
+    url: jdbc:mysql://192.168.46.135:3306/ai_server?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
+#    password: root@123456
+#    url: jdbc:mysql://111.10.175.134:3307/ai_server?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
     driver-class-name: com.mysql.cj.jdbc.Driver
     type: com.alibaba.druid.pool.DruidDataSource
+    druid:
+      keep-alive: true
+      validation-query: SELECT 1
+      min-idle: 1
+      test-while-idle: true
+      test-on-borrow: true
+      min-evictable-idle-time-millis: 120000
+      time-between-eviction-runs-millis: 30000
   jpa:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQL8Dialect
   data:
     redis:
-      host: 111.10.175.134
+#      host: 111.10.175.134
+      host: 192.168.46.135
       port: 6380
       password: redis123456
       timeout: 10000ms
@@ -89,9 +113,10 @@ spring:
 
 agenthub:
   workflow:
-    model-roles:
-      decomposition: qwen3
-    reasoning-models: gemma4:12b,qwen3
+#    model-roles:
+#      decomposition: qwen3:8b-q4_K_M
+#      reasoning-models: qwen3-max,qwen3:8b-q4_K_M
+
 
 logging:
   level:

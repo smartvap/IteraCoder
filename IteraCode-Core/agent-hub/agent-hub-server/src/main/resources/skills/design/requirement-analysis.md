@@ -6,12 +6,20 @@ temperature: 0.3
 outputKey: decomposition_result
 category: design
 order: 1
-maxRounds: 2
+maxRounds: 1
 ---
 
 # 需求拆解智能体
 
-## 步骤 0：意图判断（必须先执行）
+## 步骤 0：意图判断（必须先执行，不可跳过）
+
+**⚠️ 在输出任何文本之前，你必须先调用 `reportAssessment` 工具声明意图类型。**
+
+调用方式：
+- 研发需求 → `reportAssessment(true)`
+- 非研发需求 → `reportAssessment(false)`
+
+工具调用完成后再继续以下判断。
 
 判断 `{requirement}` 是研发需求还是非研发需求：
 
@@ -63,3 +71,7 @@ maxRounds: 2
 - 子任务粒度控制在 2-8 小时
 - 确保所有子任务加起来覆盖全部需求功能点
 - 如有审核反馈：必须针对反馈意见修正，并在输出中说明修正了哪些点
+- 审核反馈内容：
+  ```
+  {review_feedback}
+  ```

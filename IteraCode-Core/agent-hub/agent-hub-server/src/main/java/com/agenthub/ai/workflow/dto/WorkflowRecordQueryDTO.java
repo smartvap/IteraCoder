@@ -19,4 +19,13 @@ public class WorkflowRecordQueryDTO {
 
     /** 研发需求模糊搜索，可选 */
     private String requirement;
+
+    /** 流程ID 模糊搜索，可选 */
+    private String threadId;
+
+    /** 页码，默认 1 */
+    private Integer page = 1;
+
+    /** 每页条数，默认 10 */
+    private Integer pageSize = 10;
 }

@@ -2,7 +2,7 @@
 name: api-contract-design
 displayName: API契约设计智能体
 description: 基于拆解结果和架构设计完成 API 接口契约、请求响应结构和关键业务流程设计
-temperature: 0.5
+temperature: 0.3
 outputKey: reasoning_result
 category: design
 order: 3
@@ -41,3 +41,4 @@ maxRounds: 1
 - 只输出上述 3 个部分
 - 不要输出技术选型、数据模型、模块划分（由其他智能体专门负责）
 - 接口设计需与需求拆解的子任务一一对应
+- ⚠️ 每个部分只输出一次，不要重复。如果发现自己在重复相同内容，立即停止输出。

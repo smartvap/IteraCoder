@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS `workflow_metadata` (
     `status`          VARCHAR(32)  NOT NULL COMMENT '工作流状态：RUNNING-运行中 WAITING_REVIEW-待审核 COMPLETED-已完成 TERMINATED-已终止 FAILED-失败',
     `create_time`     DATETIME     NOT NULL COMMENT '创建时间',
     `update_time`     DATETIME     NOT NULL COMMENT '最后更新时间',
+    `remark` VARCHAR(500) COMMENT '备注',
     PRIMARY KEY (`thread_id`),
     INDEX `idx_status` (`status`),
     INDEX `idx_create_time` (`create_time`)

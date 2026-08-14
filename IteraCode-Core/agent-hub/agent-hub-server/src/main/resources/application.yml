@@ -10,11 +10,25 @@ agenthub:
   workflow:
     saver-type: mysql  # 工作流状态存储: memory / mysql / redis
     model-roles:                     # 固定角色 → 模型名映射（需与 spring.ai.models 中某个 name 一致）
-      decomposition: glm-5.1          # 需求拆解
-      code-generation: glm-5.1         # 代码生成
-      harness: glm-5.1                 # 沙箱验证
+      decomposition: qwen3:8b-q4_K_M          # 需求拆解
+      reasoning-models: qwen3:4b,qwen3:8b-q4_K_M  # 并行推理模型列表（逗号分隔）
+      merge-result: qwen3:8b-q4_K_M           # 合并推理结果
+      manual-review: qwen3:8b-q4_K_M          # 人工审核摘要生成
+      code-generation: qwen3:8b-q4_K_M         # 代码生成
+      harness: glm-5.1                # 沙箱验证
       repair: glm-5.1                  # 代码修复
-    reasoning-models: qwen3,glm-5.1  # 并行推理模型列表（逗号分隔）
+    max-repair-iterations: 20         # 代码修复循环最大轮次
+
+    # Git 推送配置（enabled=false 时使用本地目录方式）
+    code-storage-path: "D:/agenthub-codegen"  # 本地目录，不配或为空时默认项目根目录/temp
+    git:
+      enabled: true                          # 是否将项目代码推送到远程 Git 仓库
+      remote-url: http://192.168.46.135:3000       # Git 服务地址（Gitea/GitLab）
+      api-base-url: http://192.168.46.135:3000/api/v1  # API 地址（Gitea: /api/v1, GitLab: /api/v4）
+      token: "${GIT_TOKEN}"                  # API Token（环境变量优先，避免硬编码）
+      repo-owner: agent-hub                    # 仓库所属组织/用户
+      username: agent                      # 提交者姓名
+      email: he14227968@163.com                   # 提交者邮箱
   jwt:
     admin-secret-key: agent_jwt_secret_key_for_admin_access_256_bits_required
     admin-ttl: 7200000
