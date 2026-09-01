@@ -212,7 +212,7 @@ public class GitProjectService {
 
     private void deleteQuiet(Path dir) {
         try { java.nio.file.Files.walk(dir).sorted(java.util.Comparator.reverseOrder())
-                .forEach(p -> { try { java.nio.file.Files.deleteIfExists(p); } catch (Exception ignored) {} }); }
+                .forEach(p -> { try { p.toFile().setWritable(true); java.nio.file.Files.deleteIfExists(p); } catch (Exception ignored) {} }); }
         catch (Exception ignored) {}
     }
 
@@ -407,7 +407,7 @@ public class GitProjectService {
             try (var stream = Files.walk(dir)) {
                 stream.sorted(Comparator.reverseOrder())
                         .forEach(p -> {
-                            try { Files.delete(p); } catch (Exception ignored) {}
+                            try { p.toFile().setWritable(true); Files.delete(p); } catch (Exception ignored) {}
                         });
             }
         } catch (Exception ignored) {}

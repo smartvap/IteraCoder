@@ -160,7 +160,8 @@ public class SseStreamingInterceptor implements StreamingModelInterceptor {
         if (!fullContent.isEmpty()) {
             // 代码生成/修复输出跳过全量推送：流式 delta 已逐块推送，afterStreamComplete
             // 的全量覆盖会导致前端内容闪烁（先清空再显示），体验极差。
-            if (RdWorkflowKeys.GENERATED_CODE.equals(outputKey)) {
+            if (RdWorkflowKeys.GENERATED_CODE.equals(outputKey)
+                    || RdWorkflowKeys.CODE_REPAIR_ANALYSIS.equals(outputKey)) {
                 log.debug("SseStreamingInterceptor [{}] 跳过全量推送（流式 delta 已覆盖），{} 字符",
                         outputKey, fullContent.length());
                 return;

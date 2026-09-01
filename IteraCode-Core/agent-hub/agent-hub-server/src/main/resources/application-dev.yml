@@ -1,7 +1,7 @@
 spring:
   mvc:
     async:
-      request-timeout: 3600000
+      request-timeout: 3600000  # 60 分钟，覆盖 SSE 长连接场景（沙箱编译+修复循环可能耗时较长）
   ai:
     openai:
       api-key: ${ZPAPIKEY}
@@ -12,9 +12,14 @@ spring:
       base-url: http://localhost:11434
       timeout: 60s
     models:
-      - name: gemma2
+      - name: glm-4.7-flash:q4_K_M
         type: ollama
-        model: gemma2:2b
+        model: glm-4.7-flash:q4_K_M
+        temperature: 0.7
+        max-tokens: 4096
+      - name: gemma4:26b-a4b-it-q4_K_M
+        type: ollama
+        model: gemma4:26b-a4b-it-q4_K_M
         temperature: 0.7
         max-tokens: 4096
       - name: qwen3:8b-q4_K_M
@@ -33,15 +38,10 @@ spring:
         num-ctx: 3072
         num-gpu: 22
         num-batch: 256
-      - name: glm-5.1
-        type: dashscope
-        model: glm-5.1
-        temperature: 0.7
-        max-tokens: 8192
       - name: glm-5.2
         type: dashscope
         model: glm-5.2
-        temperature: 0.5
+        temperature: 0.7
         max-tokens: 8192
       - name: deepseek-v4-pro
         type: openai
@@ -79,8 +79,8 @@ spring:
 
   datasource:
     username: root
+    url: jdbc:mysql://192.168.46.138:3306/ai_server?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
     password: 123456
-    url: jdbc:mysql://192.168.46.135:3306/ai_server?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
 #    password: root@123456
 #    url: jdbc:mysql://111.10.175.134:3307/ai_server?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -99,8 +99,8 @@ spring:
         dialect: org.hibernate.dialect.MySQL8Dialect
   data:
     redis:
-#      host: 111.10.175.134
-      host: 192.168.46.135
+      host: 192.168.46.138
+#      host: 192.168.1.118
       port: 6380
       password: redis123456
       timeout: 10000ms
@@ -111,13 +111,15 @@ spring:
           min-idle: 1
           max-wait: 2000ms
 
-agenthub:
-  workflow:
-#    model-roles:
-#      decomposition: qwen3:8b-q4_K_M
-#      reasoning-models: qwen3-max,qwen3:8b-q4_K_M
-
-
 logging:
   level:
     root: INFO
+
+# DinD 沙箱：连接 Docker
+agenthub:
+  workflow:
+    sandbox:
+#      docker-host: "tcp://111.10.175.134:2375"
+      docker-host: "tcp://192.168.46.138:2375"
+      dind-enabled: true
+

@@ -18,7 +18,9 @@ import com.agenthub.ai.workflow.event.WorkflowEventBus;
 import com.agenthub.ai.workflow.interceptor.SseStreamingInterceptor;
 import com.agenthub.ai.workflow.mapper.WorkflowMetadataMapper;
 import com.agenthub.ai.workflow.entity.WorkflowMetadata;
+import com.agenthub.ai.workflow.tool.SandboxContext;
 import com.agenthub.ai.workflow.tool.CodeProjectWriter;
+import com.agenthub.ai.workflow.tool.CodeRepairTools;
 import com.agenthub.ai.workflow.skill.SkillLoader;
 import com.agenthub.ai.workflow.vo.RdWorkflowResultVO;
 import lombok.extern.slf4j.Slf4j;
@@ -57,35 +59,48 @@ import reactor.core.Disposable;
 @Service
 public class RdWorkflowService {
 
+    /** doOnError/pushErrorToSse 推送的详细错误状态，供 pushFinalState 读取避免被简单状态覆盖 */
+    public static final Map<String, String> errorStatusDetails = new ConcurrentHashMap<>();
+
     /** 活跃的工作流 reactive 流，用于手动终止 */
     private final Map<String, Disposable> activeStreams = new ConcurrentHashMap<>();
 
     private final CompiledGraph rdWorkflowCompiledGraph;
     private final WorkflowEventBus eventBus;
     private final WorkflowMetadataMapper metadataMapper;
+    private final DockerSandboxService sandboxService;
     private final SkillLoader skillLoader;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
+    @Value("${agenthub.workflow.max-repair-iterations:5}")
+    private int maxRepairIterations;
+
     @Value("${agenthub.workflow.saver-type:memory}")
     private String saverType;
+	
     private final com.alibaba.cloud.ai.graph.serializer.StateSerializer stateSerializer;
     private final GitProjectService gitService;
+    private final com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver rdWorkflowSaver;
 
     @Value("${agenthub.workflow.code-storage-path:}")
     private String codeStoragePath;
 
     public RdWorkflowService(CompiledGraph rdWorkflowCompiledGraph, WorkflowEventBus eventBus,
-            WorkflowMetadataMapper metadataMapper,
+            WorkflowMetadataMapper metadataMapper, DockerSandboxService sandboxService,
             SkillLoader skillLoader,
             com.alibaba.cloud.ai.graph.serializer.StateSerializer stateSerializer,
             @org.springframework.beans.factory.annotation.Autowired(required = false)
-            GitProjectService gitService) {
+            GitProjectService gitService,
+            @org.springframework.beans.factory.annotation.Autowired(required = false)
+            com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver rdWorkflowSaver) {
         this.rdWorkflowCompiledGraph = rdWorkflowCompiledGraph;
         this.eventBus = eventBus;
         this.metadataMapper = metadataMapper;
+        this.sandboxService = sandboxService;
         this.skillLoader = skillLoader;
         this.stateSerializer = stateSerializer;
         this.gitService = gitService;
+        this.rdWorkflowSaver = rdWorkflowSaver;
     }
 
 
@@ -192,7 +207,9 @@ public class RdWorkflowService {
      */
     private void registerSseInterceptors(String threadId) {
         SseStreamingInterceptor.registerThreadId(RdWorkflowKeys.DECOMPOSITION_RESULT, threadId);
+        SseStreamingInterceptor.registerThreadId(RdWorkflowKeys.HARNESS_RESULT, threadId);
         SseStreamingInterceptor.registerThreadId(RdWorkflowKeys.GENERATED_CODE, threadId);
+        SseStreamingInterceptor.registerThreadId(RdWorkflowKeys.CODE_REPAIR_ANALYSIS, threadId);
     }
 
     /**
@@ -209,6 +226,7 @@ public class RdWorkflowService {
         Map<String, Object> input = new HashMap<>();
         input.put(RdWorkflowKeys.REQUIREMENT, requirement.trim());
         input.put(MultiRoundAgentNode.THREAD_ID_KEY, threadId);
+        input.put(RdWorkflowKeys.REPAIR_COUNT, 0);
         RunnableConfig config = buildConfig(threadId);
 
         // 写入元数据表
@@ -336,6 +354,8 @@ public class RdWorkflowService {
                 stateUpdate.put(RdWorkflowKeys.PARALLEL_REASONING_RESULT, null);
                 stateUpdate.put(RdWorkflowKeys.REVIEW_CONTENT, null);
                 stateUpdate.put(RdWorkflowKeys.GENERATED_CODE, null);
+                stateUpdate.put(RdWorkflowKeys.HARNESS_RESULT, null);
+                stateUpdate.put(RdWorkflowKeys.VALIDATION_PASSED, null);
                 stateUpdate.put(CodeProjectWriteNode.CODE_PROJECT_ROOT, null);
                 // 动态清除所有 reasoning_*_result 字段
                 for (String key : resumeState.data().keySet()) {
@@ -426,6 +446,8 @@ public class RdWorkflowService {
             }
         }
 
+        // 清理上次异常残留的错误状态
+        errorStatusDetails.remove(threadId);
 
         RunnableConfig config = buildConfig(threadId);
 
@@ -442,9 +464,28 @@ public class RdWorkflowService {
                             "该流程当前处于等待人工审核状态，请通过审核界面操作");
                 }
                 resumeNode = determineResumeNode(state);
+                // FAILED 恢复：跳过 validation，从 code_project_write 重新开始
+                // （checkpoint state 中的 WORKFLOW_STATUS 可能未更新，以 metadata 为准）
+                if ("validation".equals(resumeNode) && "FAILED".equals(meta.getStatus())) {
+                    log.info("[RECOVER] FAILED 恢复，路由到 code_project_write: threadId={}", threadId);
+                    resumeNode = "code_project_write";
+                }
                 if (resumeNode != null) {
                     log.info("[RECOVER] 定位续跑点: {}, threadId={}", resumeNode, threadId);
                     Map<String, Object> clearState = new HashMap<>();
+                    // 保留原 REPAIR_COUNT 让轮次接着走；仅当已到 maxRepairIterations 上限时
+                    // 重置为 max-2（给恢复后的流程至少留 2 轮），避免恢复后立刻 max_repair
+                    int origRepairCount = Integer.parseInt(
+                            state.value(RdWorkflowKeys.REPAIR_COUNT, 0).toString());
+                    int restoredRepairCount = origRepairCount >= maxRepairIterations
+                            ? Math.max(0, maxRepairIterations - 2)
+                            : origRepairCount;
+                    if (restoredRepairCount != origRepairCount) {
+                        log.info("[RECOVER] REPAIR_COUNT {} → {}（超出上限，留 2 轮余量）, threadId={}",
+                                origRepairCount, restoredRepairCount, threadId);
+                    }
+                    clearState.put(RdWorkflowKeys.REPAIR_COUNT, restoredRepairCount);
+                    clearState.put(RdWorkflowKeys.WORKFLOW_STATUS, "RUNNING");
                     // 续跑 decomposition_gate 时清掉推理结果，防部分完成的推理被跳过
                     if ("decomposition_gate".equals(resumeNode)) {
                         clearState.put(RdWorkflowKeys.PARALLEL_REASONING_RESULT, null);
@@ -455,11 +496,39 @@ public class RdWorkflowService {
                         }
                     }
                     config = rdWorkflowCompiledGraph.updateState(config, clearState, resumeNode);
+                    // 关键：updateState 只更新 state 数据，不改 checkpoint.nextNodeId。
+                    // 修复耗尽类 FAILED 流程正常走到 END，nextNodeId=__END__，
+                    // 恢复时 GraphRunnerContext 会直接结束。这里手动重置为 resumeNode。
+                    final String resetResumeNode = resumeNode;
+                    final RunnableConfig resetConfig = config;
+                    if (rdWorkflowSaver != null) {
+                        try {
+                            rdWorkflowSaver.get(resetConfig).ifPresent(cp -> {
+                                try {
+                                    com.alibaba.cloud.ai.graph.checkpoint.Checkpoint newCp =
+                                            com.alibaba.cloud.ai.graph.checkpoint.Checkpoint.builder()
+                                                    .id(cp.getId())
+                                                    .state(cp.getState())
+                                                    .nodeId(cp.getNodeId())
+                                                    .nextNodeId(resetResumeNode)
+                                                    .build();
+                                    rdWorkflowSaver.put(resetConfig, newCp);
+                                    log.info("[RECOVER] 重置 checkpoint.nextNodeId: {} → {} (threadId={})",
+                                            cp.getNextNodeId(), resetResumeNode, threadId);
+                                } catch (Exception e) {
+                                    log.warn("[RECOVER] 重置 checkpoint.nextNodeId 失败: {}", e.getMessage());
+                                }
+                            });
+                        } catch (Exception e) {
+                            log.warn("[RECOVER] 读取 checkpoint 失败: {}", e.getMessage());
+                        }
+                    }
                 } else {
                     log.info("[RECOVER] 无法定位续跑点，从头执行: threadId={}", threadId);
                 }
 
-                if (resumeNode != null) {
+                // 沙箱预检：续跑点在 sandbox_init 之后时，提前重建容器
+                if (isAfterSandbox(state, resumeNode)) {
                     String projectRoot = RdWorkflowKeys.extractStateText(state, CodeProjectWriteNode.CODE_PROJECT_ROOT, "");
                     if (!projectRoot.isBlank()) {
                         // 检查磁盘目录是否存在（可能被系统清理）
@@ -496,6 +565,27 @@ public class RdWorkflowService {
                                             "项目代码丢失且无可恢复的数据源（Git 和 checkpoint 均不可用）");
                                 }
                             }
+                        }
+                    }
+                    // 如果 resumeNode 被改为 code_project_write，跳过沙箱预检
+                    if (isAfterSandbox(state, resumeNode) && !projectRoot.isBlank()) {
+                        // 重启后内存 Map 丢失，先恢复初始代码生成目录和修复目录。
+                        // 必须在沙箱重建之前执行（独立于沙箱 try 块）：
+                        // 即使沙箱重建失败，context 也要恢复，否则修复 Agent 首次写文件
+                        // 会误判为首次创建，重建空目录丢失已修复内容。
+                        SandboxContext.setInitialProjectRoot(threadId, projectRoot);
+                        String repairRoot = CodeProjectWriter.findRepairRootForThread(threadId);
+                        if (repairRoot != null) {
+                            SandboxContext.setRepairProjectRootForThread(threadId, repairRoot);
+                            log.info("[RECOVER] 找回修复目录: {} (threadId={})", repairRoot, threadId);
+                        }
+                        try {
+                            String containerId = sandboxService.reuseOrCreateSandbox(threadId, projectRoot);
+                            SandboxContext.initForThread(threadId, projectRoot, containerId);
+                            log.info("沙箱已重建: threadId={}, containerId={}", threadId,
+                                    containerId.substring(0, Math.min(8, containerId.length())));
+                        } catch (Exception e) {
+                            log.warn("沙箱重建失败（将依赖后续 sandbox_init 重试）: threadId={}", threadId, e);
                         }
                     }
                 }
@@ -554,6 +644,16 @@ public class RdWorkflowService {
      */
     private String determineResumeNode(OverAllState state) {
         // 优先级从后往前：越后面越精确
+        if (hasStateValue(state, RdWorkflowKeys.HARNESS_RESULT)) {
+            // FAILED 恢复时跳过 validation，从 code_project_write 重新开始
+            // （避免 REPAIR_COUNT 残留导致立刻 max_repair）
+            String status = RdWorkflowKeys.extractStateText(state, RdWorkflowKeys.WORKFLOW_STATUS, "");
+            if ("FAILED".equals(status)) {
+                log.info("[RECOVER] checkpoint WORKFLOW_STATUS=FAILED，路由到 code_project_write");
+                return "code_project_write";
+            }
+            return "validation";
+        }
         if (hasStateValue(state, RdWorkflowKeys.GENERATED_CODE)) {
             // 从 code_project_write 续跑：重新写盘（旧目录已删除）+ sandbox_init
             return "code_project_write";
@@ -570,6 +670,14 @@ public class RdWorkflowService {
             return "decomposition_gate";
         }
         return null;
+    }
+
+    /**
+     * 判断续跑点是否在沙箱初始化之后（此时需提前重建容器）。
+     */
+    private boolean isAfterSandbox(OverAllState state, String resumeNode) {
+        if (resumeNode == null) return false;
+        return "validation".equals(resumeNode) || "harness".equals(resumeNode);
     }
 
     private static boolean hasStateValue(OverAllState state, String key) {
@@ -610,20 +718,50 @@ public class RdWorkflowService {
             if (metadata != null && ("WAITING_REVIEW".equals(metadata.getStatus()) || isTerminal(metadata.getStatus()))) {
                 status = RdWorkflowStatus.valueOf(metadata.getStatus());
             }
+            // harness 三 true 兜底：resolveStatus / metadata 可能因 checkpoint 旧值误判 FAILED，
+            // 但 harness_result 三个 true 说明验证确实通过了，强制覆盖为 COMPLETED
+            if (status == RdWorkflowStatus.FAILED || status == RdWorkflowStatus.TERMINATED) {
+                String harnessText = RdWorkflowKeys.extractStateText(state,
+                        RdWorkflowKeys.HARNESS_RESULT, "");
+                if (!harnessText.isBlank() && harnessThreeTrue(harnessText)) {
+                    log.warn("getState: harness 三个 true，覆盖状态 {} → COMPLETED (threadId={})",
+                            status, threadId);
+                    status = RdWorkflowStatus.COMPLETED;
+                    // 同步修复 metadata：纠正之前 pushFinalState 误判写入的 FAILED 状态
+                    if (metadata != null && !"COMPLETED".equals(metadata.getStatus())) {
+                        metadata.setStatus("COMPLETED");
+                        metadataMapper.updateById(metadata);
+                    }
+                }
+            }
             String message = RdWorkflowKeys.extractStateText(state, RdWorkflowKeys.WORKFLOW_MESSAGE, "");
             if (status == RdWorkflowStatus.RUNNING && message.isBlank()) {
                 message = "工作流执行中...";
             } else if (status == RdWorkflowStatus.FAILED || status == RdWorkflowStatus.TERMINATED) {
-                // 优先从 metadata remark 读取失败/终止原因
-                if (message.isBlank() || message.equals("工作流已启动")) {
-                    if (metadata != null && metadata.getRemark() != null && !metadata.getRemark().isBlank()) {
-                        message = metadata.getRemark();
-                    } else if (status == RdWorkflowStatus.FAILED) {
+                // 优先从 metadata remark 读取失败/终止原因（pushFinalState 已写入，比 checkpoint 的
+                // workflow_message 可靠——后者可能因异步写入延迟仍为旧值，如"第 N 次代码修复"）
+                if (metadata != null && metadata.getRemark() != null && !metadata.getRemark().isBlank()) {
+                    message = metadata.getRemark();
+                } else if (message.isBlank() || message.equals("工作流已启动")) {
+                    if (status == RdWorkflowStatus.FAILED) {
                         message = "工作流执行失败";
                     }
                 }
             }
             Map<String, Object> sanitized = sanitizeStateForSerialization(state.data());
+            // 终态补全：仅当沙箱确实跑过时，补上 checkpoint 可能缺失的 validation_passed
+            if (isTerminal(status.name()) && sanitized.containsKey(RdWorkflowKeys.HARNESS_RESULT)
+                    && !sanitized.containsKey(RdWorkflowKeys.VALIDATION_PASSED)) {
+                sanitized.put(RdWorkflowKeys.VALIDATION_PASSED, true);
+            }
+            // harnessThreeTrue 兜底后同步修正返回字段（前端渲染依赖这些原始值）
+            if (status == RdWorkflowStatus.COMPLETED) {
+                Object vpObj = sanitized.get(RdWorkflowKeys.VALIDATION_PASSED);
+                if (!Boolean.TRUE.equals(vpObj) && !"true".equalsIgnoreCase(String.valueOf(vpObj))) {
+                    sanitized.put(RdWorkflowKeys.VALIDATION_PASSED, true);
+                }
+                sanitized.put(RdWorkflowKeys.WORKFLOW_STATUS, "COMPLETED");
+            }
             return RdWorkflowResultVO.builder()
                     .threadId(threadId)
                     .status(status)
@@ -773,6 +911,18 @@ public class RdWorkflowService {
         if ("TERMINATED".equals(reviewDecision)) {
             return RdWorkflowStatus.TERMINATED;
         }
+        boolean validationPassed = Boolean.parseBoolean(
+                state.value(RdWorkflowKeys.VALIDATION_PASSED).map(Object::toString).orElse("false"));
+        if (validationPassed) {
+            return RdWorkflowStatus.COMPLETED;
+        }
+        int repairCount = Integer.parseInt(state.value(RdWorkflowKeys.REPAIR_COUNT, 0).toString());
+        if (repairCount >= maxRepairIterations && !validationPassed) {
+            // 修复循环耗尽次数且验证未通过 → FAILED
+            // 不依赖 harness_result.isPresent()，因为修复循环可能因"没写文件"重试耗尽次数，
+            // 此时跳过了沙箱验证，harness_result 可能为空或停留在旧值
+            return RdWorkflowStatus.FAILED;
+        }
         String workflowStatus = RdWorkflowKeys.extractStateText(state, RdWorkflowKeys.WORKFLOW_STATUS, "");
         if ("WAITING_REVIEW".equals(workflowStatus)) {
             return RdWorkflowStatus.WAITING_REVIEW;
@@ -858,16 +1008,11 @@ public class RdWorkflowService {
             String threadId = config.threadId().orElse(null);
             if (threadId == null) return;
 
-            // 状态获取：优先用流最后一帧 lastOutput（当前运行，包含 code_project_root），
-            // 回退到 checkpoint（恢复/重启场景，上一次运行已落库）
-            OverAllState state;
-            if (lastOutput != null && !(lastOutput instanceof InterruptionMetadata)) {
-                state = lastOutput.state();
-            } else {
-                Map<String, Object> pushStateData = queryLatestState(threadId);
-                if (pushStateData == null) return;
-                state = stateSerializer.stateOf(pushStateData);
-            }
+            // 始终从 checkpoint 获取最新 State（InterruptionMetadata.state() 是暂停时的旧快照，可能过时）
+            // 确定性读取最新 checkpoint（绕过框架 MysqlSaver 的同秒排序不稳定问题）
+            Map<String, Object> pushStateData = queryLatestState(threadId);
+            if (pushStateData == null) return;
+            OverAllState state = stateSerializer.stateOf(pushStateData);
 
             // 判断工作流是否真正暂停（被 interruptAfter 中断）
             // 可靠信号：stream() 最后一个 NodeOutput 是 InterruptionMetadata
@@ -885,11 +1030,57 @@ public class RdWorkflowService {
                 if ("FAILED".equals(wsOverride)) {
                     resolved = RdWorkflowStatus.FAILED;
                 }
+                // 修复耗尽节点 errorStatusDetails 兜底：跨线程可靠覆盖
+                String failOverride = errorStatusDetails.get(threadId);
+                if (failOverride != null && failOverride.startsWith("FAILED")) {
+                    status = RdWorkflowStatus.FAILED.name();
+                }
                 // resolveStatus 可能返回 RUNNING（中间状态），此时工作流已结束
+                // 需要判断是真正完成还是修复耗尽失败
                 if (resolved == RdWorkflowStatus.RUNNING) {
-                    status = RdWorkflowStatus.COMPLETED.name();
+                    int repairCount = Integer.parseInt(
+                            state.value(RdWorkflowKeys.REPAIR_COUNT, 0).toString());
+                    Object vpObj = state.value(RdWorkflowKeys.VALIDATION_PASSED).orElse(null);
+                    boolean validationPassed = Boolean.TRUE.equals(vpObj)
+                            || "true".equalsIgnoreCase(String.valueOf(vpObj));
+                    // 显式验证失败：validation_passed 有值且不是 true（ValidationNode 失败时写入失败文本）
+                    boolean validationFailed = vpObj != null && !validationPassed
+                            && !String.valueOf(vpObj).isBlank();
+                    if (validationFailed) {
+                        // 验证节点明确判定失败 → FAILED（避免"验证失败但修复未耗尽"误判为 COMPLETED）
+                        status = RdWorkflowStatus.FAILED.name();
+                    } else if (repairCount >= maxRepairIterations && !validationPassed) {
+                        status = RdWorkflowStatus.FAILED.name();
+                    } else {
+                        // 检查 doOnError 是否记录了异常（pushErrorToSse 不再发送 workflow_status，
+                        // ReactAgent onErrorResume 可能吞掉异常导致 stream 正常完成但 state 仍为 RUNNING）
+                        String errorDetail = errorStatusDetails.get(threadId);
+                        if (errorDetail != null) {
+                            status = RdWorkflowStatus.FAILED.name();
+                        } else {
+                            status = RdWorkflowStatus.COMPLETED.name();
+                        }
+                    }
                 } else {
                     status = resolved.name();
+                }
+            }
+
+            // 兜底：即使 checkpoint 中遗留旧值导致判定为 FAILED/RUNNING，
+            // 如果 harness_result 显示三个 true（验证确实通过了），强制覆盖为 COMPLETED。
+            // recover 场景下 checkpoint 可能残留修复循环中途的 WORKFLOW_STATUS 旧值，
+            // 导致 resolveStatus 误判。
+            if (!"COMPLETED".equals(status) && !"WAITING_REVIEW".equals(status)
+                    && !"TERMINATED".equals(status)) {
+                String harnessText = RdWorkflowKeys.extractStateText(state,
+                        RdWorkflowKeys.HARNESS_RESULT, "");
+                if (!harnessText.isBlank() && harnessThreeTrue(harnessText)) {
+                    log.warn("pushFinalState: harness 三个 true，覆盖状态 {} → COMPLETED (threadId={})",
+                            status, threadId);
+                    status = RdWorkflowStatus.COMPLETED.name();
+                    // 直接推送修正值，覆盖前端 state 中的旧 validation_passed
+                    eventBus.publish(threadId, RdWorkflowKeys.VALIDATION_PASSED, "true", status);
+                    eventBus.publish(threadId, RdWorkflowKeys.WORKFLOW_STATUS, "COMPLETED", status);
                 }
             }
 
@@ -901,18 +1092,42 @@ public class RdWorkflowService {
             WorkflowMetadata meta = new WorkflowMetadata();
             meta.setThreadId(threadId);
             meta.setStatus(status);
-            // COMPLETED 时将最终项目路径写入备注，方便在列表页直接查看项目存放位置
+            // FAILED 时将失败原因写入备注（errorStatusDetails 由降级失败/异常节点写入，
+            // 比 checkpoint 的 workflow_message 更可靠——后者可能因异步写入延迟未被持久化）
+            if ("FAILED".equals(status)) {
+                String failReason = errorStatusDetails.get(threadId);
+                if (failReason != null) {
+                    meta.setRemark(failReason.replaceFirst("^FAILED — ", ""));
+                }
+            }
+            // COMPLETED 时写入备注：git.enabled=true（推送远程）只写项目目录名即可定位；
+            // git.enabled=false（仅本地）写完整路径便于直接找到项目目录。
             if ("COMPLETED".equals(status)) {
-                String projectRoot = RdWorkflowKeys.extractStateText(state,
-                        CodeProjectWriteNode.CODE_PROJECT_ROOT, "");
+                String repairRoot = SandboxContext.getRepairProjectRootForThread(threadId);
+                String projectRoot = repairRoot != null && !repairRoot.isBlank()
+                        ? repairRoot
+                        : RdWorkflowKeys.extractStateText(state,
+                                CodeProjectWriteNode.CODE_PROJECT_ROOT, "");
                 if (!projectRoot.isBlank()) {
-                    meta.setRemark(projectRoot);
+                    if (gitService != null) {
+                        // 已推送到 git → 只需项目名（对应 git 仓库 projects-{threadId} 的代码）
+                        String dirName = java.nio.file.Path.of(projectRoot).getFileName().toString();
+                        meta.setRemark("推送git：" + dirName);
+                    } else {
+                        // 仅本地 → 完整路径便于直接定位
+                        meta.setRemark("磁盘路径：" + projectRoot);
+                    }
                 }
                 // 兜底补推：若之前各轮 push 都失败（网络/token 波动），
                 // 工作流结束时再异步尝试一次，git 恢复后自动补齐
-                if (gitService != null && !projectRoot.isBlank()) {
+                if (gitService != null) {
                     try {
-                        gitService.pushAsync(java.nio.file.Path.of(projectRoot), threadId);
+                        String finalDir = (repairRoot != null && !repairRoot.isBlank())
+                                ? repairRoot : RdWorkflowKeys.extractStateText(state,
+                                        CodeProjectWriteNode.CODE_PROJECT_ROOT, "");
+                        if (!finalDir.isBlank()) {
+                            gitService.pushAsync(java.nio.file.Path.of(finalDir), threadId);
+                        }
                     } catch (Exception e) {
                         log.warn("Git 兜底补推失败（不影响 COMPLETED）: {}", e.getMessage());
                     }
@@ -920,25 +1135,49 @@ public class RdWorkflowService {
             }
             updateMetadataStatus(meta);
 
-            log.info("pushFinalState SSE keys: {}", state.data().keySet());
+            // 内容字段用 RUNNING 推送，避免首条事件携带终态导致 SSE 提前关闭、后续字段丢失
+            // ⚠️ 跳过 harness_result 和 generated_code：
+            // 这两个字段已由各 Agent 的 SseStreamingInterceptor 在 afterStreamComplete 中
+            // 通过 extractSummary 过滤后推送，直接推送原始内容会覆盖过滤后的横幅展示。
             for (Map.Entry<String, Object> entry : state.data().entrySet()) {
                 String key = entry.getKey();
-                if (RdWorkflowKeys.GENERATED_CODE.equals(key)) {
+                if (RdWorkflowKeys.HARNESS_RESULT.equals(key)
+                        || RdWorkflowKeys.GENERATED_CODE.equals(key)
+                        || RdWorkflowKeys.CODE_REPAIR_ANALYSIS.equals(key)) {
                     continue;
                 }
                 String value = entry.getValue() != null ? entry.getValue().toString() : "";
                 eventBus.publish(threadId, key, value, "RUNNING");
             }
             // 仅 workflow_status 携带终态，供 SSE 端点识别并关闭连接
-            eventBus.publish(threadId, RdWorkflowKeys.WORKFLOW_STATUS, status, status);
+            // 如果 pushErrorToSse 已在 doOnError 中推送了详细错误状态，优先使用
+            String errorDetail = errorStatusDetails.remove(threadId);
+            eventBus.publish(threadId, RdWorkflowKeys.WORKFLOW_STATUS,
+                    errorDetail != null && status.equals("FAILED") ? errorDetail : status, status);
 
-            // 清理临时项目目录，仅非 COMPLETED 时清理
+            // 工作流结束，销毁沙箱容器（修复循环中容器保持存活以复用 Maven 缓存）
+            try {
+                sandboxService.destroySandbox(threadId);
+            } catch (Exception e) {
+                log.warn("销毁沙箱容器失败: threadId={}", threadId, e);
+            }
+
+            // 清理临时项目目录（codegen-{threadId}-* / codefix-{threadId}-*），避免累积。
+            // ⚠️ COMPLETED 时保留磁盘目录：这是最终生成的项目文件，用户需要下载/查看。
+            // 仅失败/终止/异常时清理，防止临时目录无限累积。
             if (!"COMPLETED".equals(status)) {
                 try {
                     CodeProjectWriter.cleanupForThread(threadId);
                 } catch (Exception e) {
                     log.warn("清理临时目录失败: threadId={}", threadId, e);
                 }
+            }
+            // 内存态始终清理，防止跨工作流泄漏
+            try {
+                SandboxContext.clearAll(threadId);
+                CodeRepairTools.clearToolUsage(threadId);
+            } catch (Exception e) {
+                log.warn("清理内存上下文失败: threadId={}", threadId, e);
             }
         } catch (Exception e) {
             log.error("pushFinalState 内部失败，工作流终态可能丢失", e);
@@ -979,29 +1218,37 @@ public class RdWorkflowService {
     private void handleWorkflowException(String threadId, RunnableConfig config, Exception e) {
         try {
             String friendlyMsg = toFriendlyErrorMessage(e);
+            String errorStatus = "FAILED — " + truncate(friendlyMsg, 80);
+            errorStatusDetails.put(threadId, errorStatus);
             eventBus.publish(threadId, RdWorkflowKeys.WORKFLOW_MESSAGE, friendlyMsg, "RUNNING");
+            eventBus.publish(threadId, RdWorkflowKeys.WORKFLOW_STATUS, errorStatus, "FAILED");
             log.info("异常已推送到SSE: threadId={}, msg={}", threadId, truncate(friendlyMsg, 50));
             WorkflowMetadata meta = new WorkflowMetadata();
             meta.setThreadId(threadId);
-            meta.setRemark(truncate(friendlyMsg, 300));
             meta.setStatus("FAILED");
+            meta.setRemark(truncate(friendlyMsg, 300));
             updateMetadataStatus(meta);
         } catch (Exception ex) {
-            log.error("handleWorkflowException 内部失败: threadId={}", threadId, ex);
+            log.error("handleWorkflowException 内部失败，异常状态可能丢失: threadId={}", threadId, ex);
         }
     }
 
     private void pushErrorToSse(String threadId, Throwable e) {
         try {
             String friendlyMsg = toFriendlyErrorMessage(e);
+            String errorStatus = "FAILED — " + truncate(friendlyMsg, 80);
+            errorStatusDetails.put(threadId, errorStatus);
+            // 只发布错误消息，不发布 workflow_status
+            // doOnError 触发时数据库元数据可能尚未更新为 FAILED，
+            // 发布 FAILED 会导致前端提前触发 handleWorkflowFinished 重新监听，丢失 SSE 累积的 state
             eventBus.publish(threadId, RdWorkflowKeys.WORKFLOW_MESSAGE, friendlyMsg, "RUNNING");
             WorkflowMetadata meta = new WorkflowMetadata();
             meta.setThreadId(threadId);
-            meta.setRemark(truncate(friendlyMsg, 300));
             meta.setStatus("FAILED");
+            meta.setRemark(truncate(friendlyMsg, 300));
             updateMetadataStatus(meta);
         } catch (Exception ex) {
-            log.error("pushErrorToSse 内部失败: threadId={}", threadId, ex);
+            log.error("pushErrorToSse 内部失败，异常状态可能丢失: threadId={}", threadId, ex);
         }
     }
 
@@ -1079,6 +1326,27 @@ public class RdWorkflowService {
     private static String truncate(String s, int maxLen) {
         if (s == null || s.length() <= maxLen) return s;
         return s.substring(0, maxLen) + "...";
+    }
+
+    /**
+     * 与 ValidationNode 一致的 harness 三 true 检测，用于 pushFinalState 兜底。
+     * recover 场景下 checkpoint 可能残留修复循环中途的旧 WORKFLOW_STATUS，
+     * 导致 resolveStatus 误判 FAILED，此时若 harness 三个 true 应强制 COMPLETED。
+     */
+    private static boolean harnessThreeTrue(String text) {
+        boolean compileOk = text.contains("COMPILE_SUCCESS: true")
+                && !text.contains("COMPILE_SUCCESS: false");
+        boolean hasRuntime = (text.contains("RUNTIME_SUCCESS: true")
+                || text.contains("RUNTIME_SUCCESS: 编译通过")
+                || text.contains("RUNTIME_SUCCESS: 应用正常启动"))
+                && !text.contains("RUNTIME_SUCCESS: false");
+        boolean testOk = text.contains("TEST_SUCCESS: true")
+                && !text.contains("TEST_SUCCESS: false");
+        if (!compileOk || !hasRuntime || !testOk) return false;
+        // 排除假成功（LLM 没粘贴真实工具返回值，保留模板占位符）
+        return !text.contains("[compileCode 返回值")
+                && !text.contains("[executeInSandbox 返回值")
+                && !text.contains("[runTests 返回值");
     }
 
     /**

@@ -6,6 +6,7 @@ import com.agenthub.ai.workflow.constant.RdWorkflowKeys;
 import com.agenthub.ai.workflow.event.WorkflowEventBus;
 import com.agenthub.ai.workflow.service.GitProjectService;
 import com.agenthub.ai.workflow.tool.CodeProjectWriter;
+import com.agenthub.ai.workflow.tool.SandboxContext;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
@@ -33,7 +34,24 @@ public class CodeProjectWriteNode implements NodeAction {
 
     @Override
     public Map<String, Object> apply(OverAllState state) throws Exception {
+        // 推送事件，让前端知道即将进入沙箱验证步骤
+        pushEvent(state, RdWorkflowKeys.HARNESS_RESULT, "准备开始沙箱验证...");
+
+        // recovery 场景：尝试从 Git 克隆最新代码（比 checkpoint 代码更新）
         String threadId = state.value(MultiRoundAgentNode.THREAD_ID_KEY).map(Object::toString).orElse(null);
+        if (threadId != null && gitService != null) {
+            try {
+                java.nio.file.Path cloned = gitService.cloneIfExists(threadId);
+                if (cloned != null) {
+                    log.info("recover: 使用 Git clone 代码, threadId={}, dir={}", threadId, cloned);
+                    SandboxContext.setInitialProjectRoot(threadId, cloned.toString());
+                    return Map.of(CODE_PROJECT_ROOT, cloned.toString());
+                }
+            } catch (Exception e) {
+                // cloneIfExists 对服务器错误会抛 WorkflowInfraException，直接传播中断工作流
+                throw e;
+            }
+        }
 
         String generatedCode = state.value("generated_code")
                 .map(v -> {
@@ -71,7 +89,10 @@ public class CodeProjectWriteNode implements NodeAction {
             log.info("  {}", f);
         }
 
-        log.info("CodeProjectWriteNode 输出到state: key={}, value={}", CODE_PROJECT_ROOT, result.projectRoot());
+        if (threadId != null) {
+            SandboxContext.setInitialProjectRoot(threadId, result.projectRoot());
+        }
+
         return Map.of(CODE_PROJECT_ROOT, result.projectRoot());
     }
 

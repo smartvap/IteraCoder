@@ -308,7 +308,7 @@
 </head>
 <body>
 <h1>智能体研发工作流管理控制台</h1>
-<p class="subtitle">StateGraph + ReactAgent 智能体工作流：需求拆解 → 并行推理 → 人工审核 → 代码生成</p>
+<p class="subtitle">StateGraph + ReactAgent 智能体工作流：需求拆解 → 并行推理 → 人工审核 → 代码生成 → 沙箱验证</p>
 
 <!-- ==================== 1. 启动工作流 ==================== -->
 <div class="section">
@@ -384,6 +384,9 @@
         { key: 'parallel_reasoning_result', name: '合并推理结果' },
         { key: '_review',                   name: '等待人工审核' },
         { key: 'generated_code',            name: '代码生成' },
+        { key: 'code_repair_analysis',      name: '代码修复' },
+        { key: 'harness_result',            name: '沙箱验证' },
+        { key: 'validation_passed',         name: '验证判断' },
     ];
 
     function nowStr() {
@@ -404,6 +407,10 @@
         'review_decision':                      '审核决定（APPROVED/驳回）',
         'review_feedback':                      '审核备注/驳回原因',
         'generated_code':                       'AI 生成代码',
+        'code_repair_analysis':                 '代码修复分析',
+        'harness_result':                       '沙箱验证结果',
+        'validation_passed':                    '沙箱验证通过',
+        'repair_count':                         '修复次数',
         '_graph_execution_id_':                 '工作流实例ID',
     };
 
@@ -483,13 +490,32 @@
             return dr && dr.length > 200;
         }
         if (step.key === '_reasoning') {
+            // 合并结果生成（= 所有推理模型都输出完成）才视为完成。
+            // 不能用 hasReasoningOutput：并行推理是分批次流式输出，
+            // 一个模型先输出完就绿勾，会导致另一个模型输出时状态反复跳变。
             return !!state['parallel_reasoning_result'];
         }
         if (step.key === 'parallel_reasoning_result') {
             return state['workflow_status'] === 'WAITING_REVIEW' || !!state['review_content'];
         }
         if (step.key === 'generated_code') {
-            return state['code_project_root'] != null;
+            return state['harness_result'] != null || state['code_project_root'] != null;
+        }
+        if (step.key === 'code_repair_analysis') {
+            return !!state['code_repair_analysis'];
+        }
+        if (step.key === 'harness_result') {
+            var rc = parseInt(state['repair_count']) || 0;
+            var vp = state['validation_passed'];
+            if (rc > 0 && vp !== 'true' && vp !== true) return false;
+            // 必须同时满足：① 长度 > 100 ② 包含真正的验证结论标记。
+            // 仅 Agent 流式输出 + pushProgress（"🔨 沙箱编译中..."）不足以判定完成。
+            var hr = state['harness_result'];
+            return hr && typeof hr === 'string' && hr.length > 100
+                && /\b(?:COMPILE_SUCCESS|COMPILE_FAILED)\b/.test(hr);
+        }
+        if (step.key === 'validation_passed') {
+            return state['validation_passed'] === 'true' || state['validation_passed'] === true;
         }
         return state[step.key] != null;
     }
@@ -526,17 +552,28 @@
         if (key === 'decomposition_result') return state['decomposition_result'] || '';
         if (key === '_reasoning') {
             const parts = [];
-            for (const k of Object.keys(state).sort()) {
-                if (/^reasoning_.+_result$/.test(k) && state[k]) {
-                    const label = fieldLabel(k) || k;
-                    parts.push('===== ' + label + ' =====\n' + state[k]);
-                }
+            const keys = [];
+            for (const k of Object.keys(state)) {
+                if (/^reasoning_.+_result$/.test(k) && state[k]) keys.push(k);
+            }
+            // 按首次到达时间排序（保持各模型输出顺序，而非字母排序）
+            keys.sort((a, b) => {
+                const ta = (window._reasoningFirstSeen && window._reasoningFirstSeen[a]) || 0;
+                const tb = (window._reasoningFirstSeen && window._reasoningFirstSeen[b]) || 0;
+                return ta - tb;
+            });
+            for (const k of keys) {
+                const label = fieldLabel(k) || k;
+                parts.push('===== ' + label + ' =====\n' + state[k]);
             }
             return parts.join('\n\n');
         }
         if (key === 'parallel_reasoning_result') return state['parallel_reasoning_result'] || '';
         if (key === '_review') return state['review_content'] || '';
         if (key === 'generated_code') return state['generated_code'] || '';
+        if (key === 'code_repair_analysis') return state['code_repair_analysis'] || '';
+        if (key === 'harness_result') return extractHarnessKeyLines(state['harness_result'] || '');
+        if (key === 'validation_passed') return state['validation_passed'] || '';
         return '';
     }
 
@@ -576,10 +613,13 @@
         const sseMap = window._sseLastUpdate || {};
         const now = Date.now();
 
-        // 并行推理流式输出中
-        for (const k of Object.keys(sseMap)) {
-            if (/^reasoning_.+_result$/.test(k) && now - (sseMap[k] || 0) < 15000) {
-                return '_reasoning';
+        // 并行推理流式输出中（推理已完成则不再拉回，active 切到下游合并步骤）
+        if (!checkStepDone(state, { key: '_reasoning' })) {
+            for (const k of Object.keys(sseMap)) {
+                if (/^reasoning_.+_result$/.test(k) && now - (sseMap[k] || 0) < 15000
+                        && !state['parallel_reasoning_result']) {
+                    return '_reasoning';
+                }
             }
         }
         // 需求拆解流式输出中
@@ -595,7 +635,8 @@
         if (sseActiveKey && now - (sseMap[sseActiveKey] || 0) < 15000) {
             if (sseActiveKey === 'parallel_reasoning_result') return 'parallel_reasoning_result';
             if (sseActiveKey === 'review_content') return '_review';
-            if (sseActiveKey === 'generated_code') return sseActiveKey;
+            if (sseActiveKey === 'generated_code' || sseActiveKey === 'harness_result'
+                    || sseActiveKey === 'code_repair_analysis') return sseActiveKey;
         }
 
         // 默认：优先取最近有 SSE 更新的未完成步骤（修复循环/编译中精准定位活跃步骤）；
@@ -760,6 +801,62 @@
             }
         });
 
+        // 修复循环提示：验证未通过且状态 RUNNING 时显示（恢复后 repair_count 可能为 0，放宽 rcount>0 条件）
+        var repairEl = document.getElementById('repairIndicator');
+        var rcount = parseInt(state['repair_count']) || 0;
+        var vpassed = state['validation_passed'];
+        var isInRepair = vpassed !== 'true' && vpassed !== true
+            && (state['workflow_status'] || '') === 'RUNNING'
+            && (state['harness_result'] || state['code_repair_analysis'] || state['repair_feedback'] || rcount > 0);
+        if (isInRepair) {
+            if (!repairEl) {
+                repairEl = document.createElement('div');
+                repairEl.id = 'repairIndicator';
+                repairEl.style.cssText = 'text-align:center;padding:8px 12px;margin:8px 0 0 0;border-radius:8px;background:#fff3cd;color:#856404;font-size:13px;font-weight:bold;';
+                $('steps').appendChild(repairEl);
+            }
+            var line1 = '🔄 代码修复中' + (rcount > 0 ? '（第 ' + rcount + ' 轮）' : '') + '，请等待...';
+            // 追加上一轮失败摘要
+            var vpText = state['validation_passed'];
+            var failMsg = '';
+            if (vpText != null && vpText !== true && vpText !== 'true') {
+                failMsg = (typeof vpText === 'string' && vpText.length > 0)
+                    ? vpText
+                    : '验证未通过';
+            }
+            if (state['harness_result']) {
+                // 从 harness_result 提取具体错误详情
+                var hr = state['harness_result'];
+                var m, detail = '';
+                // 优先从独立 key 读取结构化错误详情（不受 Agent 改写影响）
+                if (state['harness_error_detail'] && typeof state['harness_error_detail'] === 'string') {
+                    detail = state['harness_error_detail'];
+                } else {
+                    // 兜底：从 harness_result 文本提取
+                    if (m = hr.match(/(?:COMPILE_FAILED|编译失败)[^\n]*(\n(?!\s*#)[^\n]{0,150}){0,3}/)) detail = m[0];
+                    else if (m = hr.match(/(?:TEST_FAILED|测试失败)[^\n]*/)) detail = m[0];
+                    else if (hr.indexOf('FAILED') > -1 || hr.indexOf('ERROR') > -1 || hr.indexOf('错误') > -1 || hr.indexOf('失败') > -1) {
+                        var lines = hr.split('\n');
+                        var errs = [];
+                        for (var j = 0; j < lines.length && errs.length < 2; j++) {
+                            var l = lines[j];
+                            if (l.indexOf('[ERROR]') > -1 || l.indexOf('ERROR') > -1 || l.indexOf('COMPILATION') > -1 || l.indexOf('非法字符') > -1 || l.indexOf('错误') > -1) {
+                                errs.push(l.trim().substring(0, 120));
+                            }
+                        }
+                        detail = errs.length > 0 ? errs.join('\n') : '编译或测试不通过';
+                    }
+                }
+                if (detail) {
+                    failMsg += (failMsg ? '\n' : '') + '🛠 ' + detail;
+                }
+            }
+            if (failMsg) line1 += '\n' + failMsg;
+            repairEl.textContent = line1;
+            repairEl.style.whiteSpace = 'pre-wrap'; // 让换行生效
+        } else if (repairEl) {
+            repairEl.style.display = 'none';
+        }
     }
 
     /**
@@ -771,6 +868,7 @@
         closeEvents();
         $('progress').classList.add('show');
         $('progressThreadId').textContent = 'Thread: ' + threadId;
+        $('queryThreadId').value = threadId;
         $('resumeThreadId').value = threadId;
         $('finalStatus').style.display = 'none';   // 隐藏终态区域
 
@@ -862,6 +960,9 @@
                             lastSseKey = d.key;
                             sseLastUpdate[d.key] = Date.now();
                             sseLastUpdate['_reasoning'] = Date.now();
+                            // 记录首次到达时间（用于 _reasoning 内容按输出顺序排列）
+                            if (!window._reasoningFirstSeen) window._reasoningFirstSeen = {};
+                            if (!window._reasoningFirstSeen[d.key]) window._reasoningFirstSeen[d.key] = Date.now();
                         }
                         renderProgress(state, lastSseKey);
 
@@ -1008,15 +1109,8 @@
                         }
                     } else {
                         console.log('[handleWorkflowFinished] → ' + effectiveStatus + '，显示终态');
-                        console.log('[handleWorkflowFinished] window._workflowState keys:', window._workflowState ? Object.keys(window._workflowState).join(',') : 'null');
-                        console.log('[handleWorkflowFinished] code_project_root=', window._workflowState ? window._workflowState['code_project_root'] : 'null');
-                        console.log('[handleWorkflowFinished] generated_code length=', window._workflowState ? (window._workflowState['generated_code'] || '').length : 0);
-                        // COMPLETED / TERMINATED：直接用 SSE 累积状态渲染，不依赖 checkpoint
+                        // COMPLETED / TERMINATED：在进度面板底部展示终态信息
                         setResumeButtonsEnabled(false);
-                        if (window._workflowState) {
-                            window._workflowState['workflow_status'] = effectiveStatus;
-                            renderProgress(window._workflowState, null);
-                        }
                         showFinalStatus(data);
                     }
                 } else {
@@ -1040,13 +1134,13 @@
         let html = '<div style="background:' + c.bg + ';color:' + c.text + ';padding:12px;border-radius:6px;border:1px solid ' + c.border + ';">';
         html += '<strong style="font-size:14px;">' + c.icon + ' 工作流' + status + '</strong>';
         const sseMsg = window._workflowState && window._workflowState['workflow_message'];
-        const message = (sseMsg && sseMsg !== '工作流已启动') ? sseMsg : (data.message || '');
+        // 优先用后端 /state 返回的权威 message（含完整失败原因），SSE 累积值仅作 fallback
+        const message = (data.message && data.message !== '工作流已启动')
+            ? data.message
+            : ((sseMsg && sseMsg !== '工作流已启动') ? sseMsg : '');
         console.log('[showFinalStatus] status=' + status + ', sseMsg=' + JSON.stringify(sseMsg) + ', data.message=' + JSON.stringify(data.message));
         if (message && message !== '工作流已启动') {
             html += '<div style="margin-top:4px;font-size:13px;">' + escapeHtml(message) + '</div>';
-        }
-        if (status === 'COMPLETED') {
-            html += '<div style="margin-top:8px;padding:10px;background:#e3f2fd;border-radius:4px;font-size:14px;font-weight:bold;text-align:center;">🚀 进入沙箱验证</div>';
         }
         html += '</div>';
         el.innerHTML = html;
@@ -1135,10 +1229,6 @@
                 $('finalStatus').style.display = 'none';
                 if (d.state) {
                     d.state['workflow_status'] = d.status;
-                    // 兜底：checkpoint 可能缺 code_project_root，有生成代码就视为已写出
-                    if (d.status === 'COMPLETED' && d.state['generated_code'] && !d.state['code_project_root']) {
-                        d.state['code_project_root'] = d.state['generated_code'];
-                    }
                     renderProgress(d.state, null);
                     // 回填研发需求到输入框
                     const req = d.state['requirement'];
@@ -1261,7 +1351,7 @@
         }
     }
 
-    // URL 参数自动查询：从 workflow-history.html 跳转过来
+    // URL 参数自动查询：从 workflow-history.html 跳转过来时自动填入 threadId 并查询
     (function() {
         const params = new URLSearchParams(window.location.search);
         const tid = params.get('threadId');

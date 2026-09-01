@@ -82,7 +82,7 @@ public class MultiRoundAgentNode implements NodeAction {
 
         // Round 1: 流式调用
         log.info("MultiRoundAgent [{}] Round 1/{}", outputKey, maxRounds);
-        String prevOutput = streamCall(new Prompt(new UserMessage(fullInstruction)), state, allOutputs, maxRounds == 1);
+        String prevOutput = streamCall(new Prompt(new UserMessage(fullInstruction)), state, allOutputs);
 
         // [NOT_DEV_REQ] 标记：非研发需求，立即终止不走后续轮次
         if (RdWorkflowKeys.isNotDevReq(prevOutput)) {
@@ -96,8 +96,7 @@ public class MultiRoundAgentNode implements NodeAction {
                     prevOutput, taskPrefix, resolvedInstruction);
             allOutputs.append("\n\n");
             pushEventDelta(state, "\n\n");
-            String response = streamCall(new Prompt(new UserMessage(continuation)), state, allOutputs,
-                    round == maxRounds);
+            String response = streamCall(new Prompt(new UserMessage(continuation)), state, allOutputs);
 
             prevOutput = response;
             }
@@ -116,7 +115,7 @@ public class MultiRoundAgentNode implements NodeAction {
      * 流式调用 ChatModel，逐 token 追加到 buffer 并实时推送增量事件。
      * 推送增量而非全量，避免代码生成后期每个事件携带 20K+ 字符导致浏览器渲染卡顿。
      */
-    private String streamCall(Prompt prompt, OverAllState state, StringBuilder buffer, boolean isLastRound) {
+    private String streamCall(Prompt prompt, OverAllState state, StringBuilder buffer) {
         if (chatModel instanceof StreamingChatModel) {
             log.info("MultiRoundAgent [{}] 使用流式调用, model={}", outputKey, chatModel.getClass().getSimpleName());
             StreamingChatModel streaming = (StreamingChatModel) chatModel;
@@ -134,8 +133,8 @@ public class MultiRoundAgentNode implements NodeAction {
                     })
                     .doOnComplete(() -> log.info("MultiRoundAgent [{}] 流式完成，总字符: {}", outputKey, buffer.length()))
                     .blockLast();
-            // 仅最后一轮刷新节流缓冲，避免中途触发前端"完成"状态
-            if (isLastRound) flushDelta(state);
+            // 清空增量节流缓存，推送本轮完整内容保证前端最终一致性
+            flushDelta(state);
             return buffer.toString();
         }
         // 回退到阻塞调用

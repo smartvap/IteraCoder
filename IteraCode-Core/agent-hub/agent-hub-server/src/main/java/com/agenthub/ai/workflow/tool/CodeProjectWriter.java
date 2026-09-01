@@ -46,7 +46,7 @@ public final class CodeProjectWriter {
                 : Path.of(System.getProperty("user.dir"), "..", "temp").normalize().toString();
     }
 
-    private static Path getStorageDir() {
+    static Path getStorageDir() {
         if (storagePath != null) return Path.of(storagePath);
         return Path.of(System.getProperty("user.dir"), "..", "temp").normalize();
     }
@@ -432,6 +432,8 @@ public final class CodeProjectWriter {
                                 walk.sorted(java.util.Comparator.reverseOrder())
                                         .forEach(f -> {
                                             try {
+                                                // Windows .git/objects 文件只读 → 先解除
+                                                f.toFile().setWritable(true);
                                                 Files.delete(f);
                                             } catch (IOException e) {
                                                 log.warn("删除临时文件失败: {}", f, e);

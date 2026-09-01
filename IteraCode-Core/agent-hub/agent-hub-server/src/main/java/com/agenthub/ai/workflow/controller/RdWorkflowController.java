@@ -10,6 +10,7 @@ import com.agenthub.ai.workflow.dto.WorkflowRecordQueryDTO;
 import com.agenthub.ai.workflow.event.WorkflowEventBus;
 import com.agenthub.ai.workflow.service.RdWorkflowService;
 import com.agenthub.ai.workflow.vo.RdWorkflowResultVO;
+import com.agenthub.ai.workflow.vo.WorkflowRecordVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
@@ -147,8 +148,6 @@ public class RdWorkflowController {
                         }
                     }
                 }
-                // 等发送缓冲 flush 到客户端，避免 content 事件丢失
-                try { Thread.sleep(100); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                 if (!completed.get()) {
                     emitter.complete();
                 }
