@@ -9,4 +9,6 @@ public class TokenUsageVO {
     private long totalCompletionTokens;
     private long totalTokens;
     private long totalDurationMs;
+    private String source;
+    private String stepName;
 }

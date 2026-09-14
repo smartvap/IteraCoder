@@ -59,4 +59,10 @@ public class TokenUsageDetail {
      * 状态 0:等待 1:完成 2:失败
      */
     private Integer status;
+
+    /** 来源：chat/workflow/rag */
+    private String source;
+
+    /** 步骤名称 */
+    private String stepName;
 }

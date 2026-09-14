@@ -6,6 +6,8 @@ import lombok.Data;
 public class TokenUsageQueryDTO {
     private String startDate;
     private String endDate;
+    private String source;
+    private String stepName;
     private int page = 1;
     private int pageSize = 20;
 }

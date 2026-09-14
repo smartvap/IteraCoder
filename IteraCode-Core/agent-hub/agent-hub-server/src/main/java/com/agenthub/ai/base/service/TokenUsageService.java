@@ -13,7 +13,18 @@ public interface TokenUsageService extends IService<TokenUsageDetail> {
      * @param completionTokens 输出 token 数
      * @param totalDurationMs 耗时 ms
      * @param status     1=成功 0=失败
+     * @param source     来源: chat/workflow/rag
+     * @param stepName   步骤名称，如 decompose/reasoning
      */
     void recordAsync(Long userId, String ipAddress, String modelName,
-                     int promptTokens, int completionTokens, long totalDurationMs, int status);
+                     int promptTokens, int completionTokens, long totalDurationMs, int status,
+                     String source, String stepName);
+
+    /**
+     * 异步记录 token 使用量（无 source/stepName 的向后兼容方法）
+     */
+    default void recordAsync(Long userId, String ipAddress, String modelName,
+                             int promptTokens, int completionTokens, long totalDurationMs, int status) {
+        recordAsync(userId, ipAddress, modelName, promptTokens, completionTokens, totalDurationMs, status, null, null);
+    }
 }

@@ -1,7 +1,9 @@
 package com.agenthub.ai.base.service.impl;
 
+import com.agenthub.ai.base.entity.DailyTokenStats;
 import com.agenthub.ai.base.entity.TokenUsageDetail;
 import com.agenthub.ai.base.entity.TokenUsageSummary;
+import com.agenthub.ai.base.mapper.DailyTokenStatsMapper;
 import com.agenthub.ai.base.mapper.TokenUsageDetailMapper;
 import com.agenthub.ai.base.mapper.TokenUsageSummaryMapper;
 import com.agenthub.ai.base.service.TokenUsageService;
@@ -23,11 +25,13 @@ public class TokenUsageServiceImpl extends ServiceImpl<TokenUsageDetailMapper, T
         implements TokenUsageService {
 
     private final TokenUsageSummaryMapper summaryMapper;
+    private final DailyTokenStatsMapper dailyTokenStatsMapper;
 
     @Override
     @Async
     public void recordAsync(Long userId, String ipAddress, String modelName,
-                            int promptTokens, int completionTokens, long totalDurationMs, int status) {
+                            int promptTokens, int completionTokens, long totalDurationMs, int status,
+                            String source, String stepName) {
         try {
             // 1. 写明细表
             TokenUsageDetail detail = new TokenUsageDetail();
@@ -39,6 +43,8 @@ public class TokenUsageServiceImpl extends ServiceImpl<TokenUsageDetailMapper, T
             detail.setTotalDurationMs(totalDurationMs);
             detail.setRequestTime(new Date());
             detail.setStatus(status);
+            detail.setSource(source != null ? source : "chat");
+            detail.setStepName(stepName);
             save(detail);
 
             // 2. 更新聚合表（按天）
@@ -53,6 +59,9 @@ public class TokenUsageServiceImpl extends ServiceImpl<TokenUsageDetailMapper, T
             // 所有用户：ip_only 聚合键
             upsertSummary("ip_only", ipAddress, statDate,
                     promptTokens, completionTokens, totalDurationMs);
+
+            // 3. 更新全局每日累计统计
+            upsertDailyStats(statDate, promptTokens, completionTokens, totalDurationMs);
 
         } catch (Exception e) {
             log.error("Token 用量异步记录失败", e);
@@ -83,6 +92,33 @@ public class TokenUsageServiceImpl extends ServiceImpl<TokenUsageDetailMapper, T
             s.setTotalCompletionTokens((long) completionTokens);
             s.setTotalDurationMs(durationMs);
             summaryMapper.insert(s);
+        }
+    }
+
+    /** Upsert 全局每日累计统计 */
+    private void upsertDailyStats(Date statDate, int promptTokens, int completionTokens, long durationMs) {
+        DailyTokenStats exist = dailyTokenStatsMapper.selectOne(
+                new LambdaQueryWrapper<DailyTokenStats>()
+                        .eq(DailyTokenStats::getStatDate, statDate)
+        );
+        if (exist != null) {
+            exist.setTotalRequests(exist.getTotalRequests() + 1);
+            exist.setTotalPromptTokens(exist.getTotalPromptTokens() + promptTokens);
+            exist.setTotalCompletionTokens(exist.getTotalCompletionTokens() + completionTokens);
+            exist.setTotalDurationMs(exist.getTotalDurationMs() + durationMs);
+            exist.setUpdateTime(new Date());
+            dailyTokenStatsMapper.updateById(exist);
+        } else {
+            DailyTokenStats s = new DailyTokenStats();
+            s.setStatDate(statDate);
+            s.setTotalRequests(1);
+            s.setTotalPromptTokens((long) promptTokens);
+            s.setTotalCompletionTokens((long) completionTokens);
+            s.setTotalDurationMs(durationMs);
+            s.setTotalUsers(1);
+            s.setCreateTime(new Date());
+            s.setUpdateTime(new Date());
+            dailyTokenStatsMapper.insert(s);
         }
     }
 }

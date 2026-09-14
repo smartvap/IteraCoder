@@ -88,6 +88,7 @@ public class ParallelResultMergeNode implements NodeAction {
                             }
                         })
                         .doOnComplete(() -> log.info("LLM 融合流式完成，总字符: {}", mergedBuilder.length()))
+                        .timeout(java.time.Duration.ofMinutes(10))
                         .blockLast();
             } else {
                 String mergeResult = mergeModel.call(new Prompt(new UserMessage(mergePrompt)))

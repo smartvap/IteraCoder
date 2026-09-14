@@ -28,6 +28,20 @@ VALUES (666497, '管理员', 'admin', '21232f297a57a5a743894a0e4a801fc3', '13700
 
 
 -- ----------------------------
+-- Table structure for tb_user_config
+-- ----------------------------
+DROP TABLE IF EXISTS `tb_user_config`;
+CREATE TABLE `tb_user_config` (
+    `id` INT NOT NULL AUTO_INCREMENT,
+    `user_id` INT NOT NULL COMMENT '用户ID',
+    `config_json` TEXT COMMENT '配置JSON',
+    `create_time` DATETIME COMMENT '创建时间',
+    `update_time` DATETIME COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户配置表';
+
+-- ----------------------------
 -- Table structure for log_info
 -- ----------------------------
 DROP TABLE IF EXISTS `log_info`;
@@ -55,4 +69,139 @@ CREATE TABLE IF NOT EXISTS `workflow_metadata` (
     INDEX `idx_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工作流元数据表';
 
+-- 兼容旧表：补充 remark 列（已存在则跳过）
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'workflow_metadata' AND COLUMN_NAME = 'remark');
+SET @ddl = IF(@col_exists = 0, 'ALTER TABLE `workflow_metadata` ADD COLUMN `remark` VARCHAR(500) DEFAULT NULL COMMENT ''备注''', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+-- ----------------------------
+-- Table structure for token_usage_detail
+-- ----------------------------
+DROP TABLE IF EXISTS `token_usage_detail`;
+CREATE TABLE `token_usage_detail` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `user_id` BIGINT NULL COMMENT '登录用户ID（NULL=匿名）',
+    `ip_address` VARCHAR(45) NOT NULL COMMENT '客户端真实IP',
+    `model_name` VARCHAR(100) NOT NULL COMMENT '模型名称',
+    `prompt_tokens` INT NOT NULL DEFAULT 0 COMMENT '输入token数',
+    `completion_tokens` INT NOT NULL DEFAULT 0 COMMENT '输出token数',
+    `total_duration_ms` BIGINT NOT NULL DEFAULT 0 COMMENT '总耗时(ms)',
+    `request_time` DATETIME NOT NULL COMMENT '请求时间',
+    `status` TINYINT NOT NULL DEFAULT 1 COMMENT '1=成功 0=失败',
+    PRIMARY KEY (`id`),
+    INDEX `idx_user_ip_time` (`user_id`, `ip_address`, `request_time`),
+    INDEX `idx_ip_time` (`ip_address`, `request_time`),
+    INDEX `idx_request_time` (`request_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Token使用明细表';
+
+-- ----------------------------
+-- Table structure for token_usage_summary
+-- ----------------------------
+DROP TABLE IF EXISTS `token_usage_summary`;
+CREATE TABLE `token_usage_summary` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `stat_type` VARCHAR(20) NOT NULL COMMENT 'user_ip / ip_only',
+    `stat_key` VARCHAR(100) NOT NULL COMMENT 'userId_ip 或 ip',
+    `stat_date` DATE NOT NULL COMMENT '统计日期',
+    `total_requests` INT NOT NULL DEFAULT 0,
+    `total_prompt_tokens` BIGINT NOT NULL DEFAULT 0,
+    `total_completion_tokens` BIGINT NOT NULL DEFAULT 0,
+    `total_duration_ms` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`),
+    UNIQUE INDEX `uk_stat` (`stat_type`, `stat_key`, `stat_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Token使用汇总表';
+
+-- ----------------------------
+-- Table structure for model_config
+-- ----------------------------
+DROP TABLE IF EXISTS `model_config`;
+CREATE TABLE `model_config` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `user_id` BIGINT NULL COMMENT '登录用户ID',
+    `ip_address` VARCHAR(45) NOT NULL COMMENT '客户端IP',
+    `config_name` VARCHAR(100) NOT NULL COMMENT '配置名称',
+    `model_type` VARCHAR(20) NOT NULL COMMENT 'ollama/openai/dashscope',
+    `model_name` VARCHAR(100) NOT NULL COMMENT '实际模型名',
+    `base_url` VARCHAR(500) NULL COMMENT 'API地址',
+    `api_key` VARCHAR(500) NULL COMMENT 'API Key',
+    `temperature` DOUBLE DEFAULT 0.7,
+    `max_tokens` INT DEFAULT 4096,
+    `is_active` TINYINT DEFAULT 1,
+    `create_time` DATETIME NOT NULL,
+    `update_time` DATETIME NOT NULL,
+    PRIMARY KEY (`id`),
+    INDEX `idx_user_ip` (`user_id`, `ip_address`),
+    INDEX `idx_ip` (`ip_address`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模型配置表';
+
+-- ----------------------------
+-- Table structure for conversation_record
+-- ----------------------------
+DROP TABLE IF EXISTS `conversation_record`;
+CREATE TABLE `conversation_record` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `session_id` VARCHAR(64) NOT NULL COMMENT '会话ID',
+    `user_id` BIGINT NULL COMMENT '用户ID',
+    `role` VARCHAR(16) NOT NULL COMMENT '角色: user/assistant',
+    `content` TEXT COMMENT '消息内容',
+    `model_name` VARCHAR(64) NULL COMMENT '模型名称',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    INDEX `idx_session_id` (`session_id`),
+    INDEX `idx_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话记录表';
+
+-- ----------------------------
+-- Alter token_usage_detail add source and step_name
+-- ----------------------------
+ALTER TABLE `token_usage_detail`
+    ADD COLUMN `source` VARCHAR(32) DEFAULT 'chat' COMMENT '来源: chat/workflow/rag',
+    ADD COLUMN `step_name` VARCHAR(100) DEFAULT NULL COMMENT '步骤名称: decompose/reasoning/codegen等';
+
+-- ----------------------------
+-- Table structure for daily_token_stats
+-- ----------------------------
+DROP TABLE IF EXISTS `daily_token_stats`;
+CREATE TABLE `daily_token_stats` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `stat_date` DATE NOT NULL COMMENT '统计日期',
+    `total_requests` INT NOT NULL DEFAULT 0 COMMENT '总请求次数',
+    `total_prompt_tokens` BIGINT NOT NULL DEFAULT 0 COMMENT '总输入token数',
+    `total_completion_tokens` BIGINT NOT NULL DEFAULT 0 COMMENT '总输出token数',
+    `total_duration_ms` BIGINT NOT NULL DEFAULT 0 COMMENT '总耗时(ms)',
+    `total_users` INT NOT NULL DEFAULT 0 COMMENT '活跃用户数',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE INDEX `uk_stat_date` (`stat_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='每日Token累计统计表';
+
+-- ----------------------------
+-- Table structure for workflow_record
+-- ----------------------------
+DROP TABLE IF EXISTS `workflow_record`;
+CREATE TABLE `workflow_record` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `session_id` VARCHAR(64) NOT NULL COMMENT '会话ID',
+    `thread_id` VARCHAR(128) NOT NULL COMMENT '工作流线程ID',
+    `round` INT DEFAULT 1 COMMENT '轮次编号',
+    `requirement` TEXT COMMENT '原始需求文本',
+    `status` VARCHAR(32) COMMENT '状态: COMPLETED/TERMINATED/FAILED',
+    `decomposition_result` MEDIUMTEXT COMMENT '需求拆解结果',
+    `reasoning_result` MEDIUMTEXT COMMENT '并行推理结果',
+    `review_decision` VARCHAR(32) COMMENT '审核决定: APPROVED/SENT_BACK/TERMINATED',
+    `review_comment` TEXT COMMENT '审核备注',
+    `codegen_files` TEXT COMMENT '代码生成文件列表(JSON数组)',
+    `prompt_tokens` BIGINT DEFAULT 0 COMMENT '输入Token数',
+    `completion_tokens` BIGINT DEFAULT 0 COMMENT '输出Token数',
+    `total_duration_ms` BIGINT DEFAULT 0 COMMENT '总耗时(ms)',
+    `workflow_message` TEXT COMMENT '工作流结束消息',
+    `start_time` DATETIME COMMENT '开始时间',
+    `end_time` DATETIME COMMENT '结束时间',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    INDEX `idx_session_id` (`session_id`),
+    INDEX `idx_thread_id` (`thread_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工作流执行记录表';
 

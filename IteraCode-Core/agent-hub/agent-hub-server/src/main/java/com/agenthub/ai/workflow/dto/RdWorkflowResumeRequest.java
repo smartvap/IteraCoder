@@ -11,4 +11,6 @@ public class RdWorkflowResumeRequest {
     private RdWorkflowReviewDecision reviewDecision;
     /** 审核备注（可选） */
     private String comment;
+    /** 前端选择的模型名（可选，恢复执行后代码生成等节点使用） */
+    private String modelName;
 }

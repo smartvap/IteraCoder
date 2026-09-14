@@ -36,8 +36,9 @@ public class User {
     private String userName;
 
     /**
-     * 密码
+     * 密码（JSON 序列化时忽略，避免敏感信息泄露；登录校验等内部逻辑仍可使用）
      */
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private String password;
 
     /**

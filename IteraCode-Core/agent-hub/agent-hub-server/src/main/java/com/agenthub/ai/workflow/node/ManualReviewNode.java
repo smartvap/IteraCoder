@@ -116,6 +116,7 @@ public class ManualReviewNode implements NodeAction {
                                 publishDelta(state, text);
                             }
                         })
+                        .timeout(java.time.Duration.ofMinutes(10))
                         .blockLast();
             } else {
                 String result = summaryModel.call(new Prompt(new UserMessage(prompt)))

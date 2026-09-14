@@ -1,8 +1,8 @@
 package com.agenthub.ai.base.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.github.pagehelper.Page;
-import com.github.pagehelper.PageHelper;
 import com.agenthub.ai.base.common.PageResult;
 import com.agenthub.ai.base.constant.MessageConstant;
 import com.agenthub.ai.base.constant.PasswordConstant;
@@ -20,6 +20,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -92,13 +93,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     @Override
     public PageResult pageQuery(UserPageQueryDTO userPageQueryDTO) {
-        //开始分页查询
-        PageHelper.startPage(userPageQueryDTO.getPage(), userPageQueryDTO.getPageSize());
+        // MyBatis-Plus 分页查询
+        Page<User> page = new Page<>(userPageQueryDTO.getPage(), userPageQueryDTO.getPageSize());
+        LambdaQueryWrapper<User> qw = new LambdaQueryWrapper<>();
+        if (StringUtils.hasText(userPageQueryDTO.getName())) {
+            qw.like(User::getName, userPageQueryDTO.getName());
+        }
+        qw.orderByDesc(User::getCreateTime);
+        Page<User> result = userMapper.selectPage(page, qw);
 
-        Page<User> page = userMapper.pageQuery(userPageQueryDTO);
-
-        long total = page.size();
-        List<User> records = page.getResult();
+        long total = result.getTotal();
+        List<User> records = result.getRecords();
 
         return new PageResult(total, records);
     }

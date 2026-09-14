@@ -37,6 +37,7 @@ import com.agenthub.ai.workflow.tool.SandboxContext;
 import com.agenthub.ai.workflow.tool.SandboxTools;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -61,6 +62,24 @@ import com.alibaba.cloud.ai.graph.action.NodeAction;
 @Slf4j
 @Configuration
 public class RdWorkflowGraphConfig {
+
+    // ===== 请求期模型选择（前端所选模型，替代已失效的静态角色模型）=====
+    // ThreadLocal 在"主链路节点同步执行模型调用"场景可靠；并行 reasoning agents
+    // 使用 reasoning-models 列表各自的模型，不受此影响。
+    private static final ThreadLocal<String> REQUEST_MODEL = new ThreadLocal<>();
+
+    /** 前端启动工作流时选择的模型名（执行线程内设置，供 DynamicChatModel 动态解析） */
+    public static void setRequestModel(String modelName) {
+        REQUEST_MODEL.set(modelName);
+    }
+
+    public static String getRequestModel() {
+        return REQUEST_MODEL.get();
+    }
+
+    public static void clearRequestModel() {
+        REQUEST_MODEL.remove();
+    }
 
     /** 连续 retry（未写文件）最大次数，防止无限循环 */
     private static final int MAX_RETRY_STREAK = 3;
@@ -167,6 +186,10 @@ public class RdWorkflowGraphConfig {
     }
 
     // ===== 辅助方法：从动态 Map 中获取模型，找不到则回退 =====
+    private ChatModel wrapDynamic(Map<String, ChatModel> chatModels, String roleModelName, OllamaApi ollamaApi) {
+        return new DynamicChatModel(chatModels, roleModelName, ollamaApi);
+    }
+
     /**
      * 从 Map 中获取指定模型名的 ChatModel。
      * LLMConfig 注册 ChatModel 时 Bean 名为 "{name}ChatModel"（如 gemma2ChatModel），
@@ -201,15 +224,15 @@ public class RdWorkflowGraphConfig {
             WorkflowEventBus eventBus,
             DockerSandboxService sandboxService,
             WorkflowMetadataMapper metadataMapper,
+            OllamaApi sharedOllamaApi,
             @org.springframework.beans.factory.annotation.Autowired(required = false)
             GitProjectService gitService) throws GraphStateException {
-
-        ChatModel decompModel = getOrFallback(chatModels, decompModelName);
-        ChatModel codeGenModel = getOrFallback(chatModels, codeGenModelName);
-        ChatModel harnessModel = getOrFallback(chatModels, harnessModelName);
-        ChatModel repairModel = getOrFallback(chatModels, repairModelName);
-        ChatModel mergeModel = getOrFallback(chatModels, mergeModelName);
-        ChatModel reviewModel = getOrFallback(chatModels, reviewModelName);
+        ChatModel decompModel = wrapDynamic(chatModels, decompModelName, sharedOllamaApi);
+        ChatModel codeGenModel = wrapDynamic(chatModels, codeGenModelName, sharedOllamaApi);
+        ChatModel harnessModel = wrapDynamic(chatModels, harnessModelName, sharedOllamaApi);
+        ChatModel repairModel = wrapDynamic(chatModels, repairModelName, sharedOllamaApi);
+        ChatModel mergeModel = wrapDynamic(chatModels, mergeModelName, sharedOllamaApi);
+        ChatModel reviewModel = wrapDynamic(chatModels, reviewModelName, sharedOllamaApi);
         log.info("模型分配: decomp={}, codeGen={}, harness={}, repair={}, merge={}, review={}",
                 decompModel.getClass().getSimpleName(),
                 codeGenModel.getClass().getSimpleName(),
@@ -278,7 +301,7 @@ public class RdWorkflowGraphConfig {
         List<String> modelNames = getReasoningModelNames();
         for (int i = 0; i < modelNames.size(); i++) {
             String modelName = modelNames.get(i).trim();
-            ChatModel cm = getOrFallback(chatModels, modelName);
+            ChatModel cm = wrapDynamic(chatModels, modelName, sharedOllamaApi);
             String key = toAgentKey(modelName);
             // 第一个推理模型做架构设计，第二个做 API 契约设计
             String instruction = (i == 0) ? archInstruction : apiInstruction;
@@ -422,7 +445,7 @@ public class RdWorkflowGraphConfig {
             int rounds = (i == 0) ? archRounds : apiRounds;
             String instruction = (i == 0) ? archInstruction : apiInstruction;
             String modelName = modelNames.get(i).trim();
-            ChatModel cm = getOrFallback(chatModels, modelName);
+            ChatModel cm = wrapDynamic(chatModels, modelName, sharedOllamaApi);
             // 统一走 MultiRoundAgentNode，保证输出为 String 而非 GraphResponse 对象
             int effectiveRounds = Math.max(rounds, 1);
             log.info("Skill [{}] 使用 MultiRoundAgentNode: {} rounds, model={}",

@@ -85,6 +85,10 @@ public class RdWorkflowService {
     @Value("${agenthub.workflow.code-storage-path:}")
     private String codeStoragePath;
 
+    /** 工作流整体执行超时（分钟），防止 CPU 慢推理时线程永久阻塞 */
+    @Value("${agenthub.workflow.execution-timeout-minutes:60}")
+    private long workflowTimeoutMinutes;
+
     public RdWorkflowService(CompiledGraph rdWorkflowCompiledGraph, WorkflowEventBus eventBus,
             WorkflowMetadataMapper metadataMapper, DockerSandboxService sandboxService,
             SkillLoader skillLoader,
@@ -218,7 +222,7 @@ public class RdWorkflowService {
      * 实际工作流执行在独立线程中进行，HTTP 请求立即返回 threadId，
      * 前端通过轮询 /state/{threadId} 获取实时进度。
      */
-    public RdWorkflowResultVO start(String requirement) {
+    public RdWorkflowResultVO start(String requirement, String modelName) {
         if (requirement == null || requirement.isBlank()) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "研发需求不能为空");
         }
@@ -241,26 +245,49 @@ public class RdWorkflowService {
 
         // 异步执行工作流，不阻塞 HTTP 线程
         CompletableFuture.runAsync(() -> {
-            // 注册 threadId 到 SseStreamingInterceptor，使 ReactAgent 的流式输出能推送到 SSE
-            registerSseInterceptors(threadId);
-            AtomicReference<NodeOutput> lastOutput = new AtomicReference<>();
-            Disposable disposable = rdWorkflowCompiledGraph.stream(input, config)
-                    .subscribe(
-                            lastOutput::set,
-                            e -> {
-                                activeStreams.remove(threadId);
-                                pushErrorToSse(threadId, e);
-                                log.error("工作流执行异常: threadId={}", threadId, e);
-                                handleWorkflowException(threadId, config, e instanceof Exception ex ? ex : new RuntimeException(e));
-                            },
-                            () -> {
-                                activeStreams.remove(threadId);
-                                pushFinalState(config, lastOutput.get());
-                                log.info("工作流执行完成: threadId={}", threadId);
-                            }
-                    );
-            activeStreams.put(threadId, disposable);
-        }, executor);
+            // ThreadLocal 必须在执行线程内设置，供 DynamicChatModel 读取前端选择的模型
+            if (modelName != null && !modelName.isBlank()) {
+                RdWorkflowGraphConfig.setRequestModel(modelName.trim());
+            }
+            try {
+                // 注册 threadId 到 SseStreamingInterceptor，使 ReactAgent 的流式输出能推送到 SSE
+                registerSseInterceptors(threadId);
+                AtomicReference<NodeOutput> lastOutput = new AtomicReference<>();
+                Disposable disposable = rdWorkflowCompiledGraph.stream(input, config)
+                        .subscribe(
+                                lastOutput::set,
+                                e -> {
+                                    activeStreams.remove(threadId);
+                                    pushErrorToSse(threadId, e);
+                                    log.error("工作流执行异常: threadId={}", threadId, e);
+                                    handleWorkflowException(threadId, config, e instanceof Exception ex ? ex : new RuntimeException(e));
+                                },
+                                () -> {
+                                    activeStreams.remove(threadId);
+                                    pushFinalState(config, lastOutput.get());
+                                    log.info("工作流执行完成: threadId={}", threadId);
+                                }
+                        );
+                activeStreams.put(threadId, disposable);
+            } catch (Exception e) {
+                activeStreams.remove(threadId);
+                pushErrorToSse(threadId, e);
+                log.error("工作流初始化异常: threadId={}", threadId, e);
+                handleWorkflowException(threadId, config, e);
+            } finally {
+                RdWorkflowGraphConfig.clearRequestModel();
+            }
+        }, executor).orTimeout(workflowTimeoutMinutes, java.util.concurrent.TimeUnit.MINUTES)
+          .exceptionally(ex -> {
+              // 超时或其他异常：标记工作流失败
+              log.error("工作流执行超时或异常: threadId={}, timeout={}min", threadId, workflowTimeoutMinutes);
+              activeStreams.remove(threadId);
+              handleWorkflowException(threadId, config,
+                      ex instanceof java.util.concurrent.TimeoutException
+                              ? new RuntimeException("工作流执行超时（" + workflowTimeoutMinutes + " 分钟），请检查 LLM 服务状态或使用更小的模型")
+                              : new RuntimeException(ex));
+              return null;
+          });
 
         log.info("工作流已启动（异步）: threadId={}", threadId);
         return RdWorkflowResultVO.builder()
@@ -276,7 +303,7 @@ public class RdWorkflowService {
      * TERMINATED 决策同步返回（无需后续执行），APPROVED/SENT_BACK 异步执行，
      * 前端通过轮询获取实时进度。
      */
-    public RdWorkflowResultVO resume(String threadId, RdWorkflowReviewDecision decision, String comment) {
+    public RdWorkflowResultVO resume(String threadId, RdWorkflowReviewDecision decision, String comment, String modelName) {
         if (threadId == null || threadId.isBlank()) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "threadId 不能为空");
         }
@@ -375,6 +402,13 @@ public class RdWorkflowService {
                 // 重新 updateState，把 WORKFLOW_MESSAGE 也写进去
                 updatedConfig = rdWorkflowCompiledGraph.updateState(
                         config, stateUpdate, RdWorkflowGraphConfig.MANUAL_REVIEW_NODE);
+                // 切断仍在运行中的 reactive 流（RUNNING 阶段点击“结束”时，必须取消后端 AI 对话）
+                Disposable activeFlow = activeStreams.remove(threadId);
+                if (activeFlow != null && !activeFlow.isDisposed()) {
+                    activeFlow.dispose();
+                    log.info("TERMINATED 决策已切断运行中的工作流流: threadId={}", threadId);
+                    pushFinalState(config, null);
+                }
                 OverAllState state = rdWorkflowCompiledGraph.getState(updatedConfig).state();
                 return RdWorkflowResultVO.builder()
                         .threadId(threadId)
@@ -387,26 +421,37 @@ public class RdWorkflowService {
 
             // APPROVED / SENT_BACK：异步恢复执行
             final RunnableConfig resumeConfig = updatedConfig;
+            final String resumeModel = (modelName != null && !modelName.isBlank()) ? modelName.trim() : null;
             CompletableFuture.runAsync(() -> {
-                // 注册 threadId 到 SseStreamingInterceptor
-                registerSseInterceptors(threadId);
-                AtomicReference<NodeOutput> lastOutput = new AtomicReference<>();
-                Disposable disposable = rdWorkflowCompiledGraph.stream(null, resumeConfig)
-                        .subscribe(
-                                lastOutput::set,
-                                e -> {
-                                    activeStreams.remove(threadId);
-                                    log.error("恢复流程异常", e);
-                                    pushErrorToSse(threadId, e);
-                                    handleWorkflowException(threadId, resumeConfig, e instanceof Exception ex ? ex : new RuntimeException(e));
-                                },
-                                () -> {
-                                    activeStreams.remove(threadId);
-                                    pushFinalState(resumeConfig, lastOutput.get());
-                                    log.info("工作流恢复执行完成: threadId={}", threadId);
-                                }
-                        );
-                activeStreams.put(threadId, disposable);
+                // 执行线程内设置请求模型，供 DynamicChatModel 动态解析（线程绑定，恢复执行后半段使用）
+                if (resumeModel != null) {
+                    RdWorkflowGraphConfig.setRequestModel(resumeModel);
+                }
+                try {
+                    // 注册 threadId 到 SseStreamingInterceptor
+                    registerSseInterceptors(threadId);
+                    AtomicReference<NodeOutput> lastOutput = new AtomicReference<>();
+                    Disposable disposable = rdWorkflowCompiledGraph.stream(null, resumeConfig)
+                            .subscribe(
+                                    lastOutput::set,
+                                    e -> {
+                                        activeStreams.remove(threadId);
+                                        log.error("恢复流程异常", e);
+                                        pushErrorToSse(threadId, e);
+                                        handleWorkflowException(threadId, resumeConfig, e instanceof Exception ex ? ex : new RuntimeException(e));
+                                    },
+                                    () -> {
+                                        activeStreams.remove(threadId);
+                                        pushFinalState(resumeConfig, lastOutput.get());
+                                        log.info("工作流恢复执行完成: threadId={}", threadId);
+                                    }
+                            );
+                    activeStreams.put(threadId, disposable);
+                } finally {
+                    if (resumeModel != null) {
+                        RdWorkflowGraphConfig.clearRequestModel();
+                    }
+                }
             }, executor);
 
             return RdWorkflowResultVO.builder()
@@ -436,11 +481,16 @@ public class RdWorkflowService {
         }
 
         // 防重：已有活跃流在执行中，不允许重复恢复。
-        // 但如果状态已为 FAILED（如 start 的 put/subscribe 竞态残留），清除残留并允许恢复。
+        // 但如果状态已为 FAILED / TERMINATED（如 start 的 put/subscribe 竞态残留，或已终止流程），
+        // 清除残留（并切断残留流）后允许恢复。
         if (activeStreams.containsKey(threadId)) {
-            if ("FAILED".equals(meta.getStatus())) {
-                log.warn("recover: 清除 activeStreams 残留条目（status=FAILED，允许恢复）, threadId={}", threadId);
-                activeStreams.remove(threadId);
+            String st = meta.getStatus();
+            if ("FAILED".equals(st) || "TERMINATED".equals(st)) {
+                log.warn("recover: 清除 activeStreams 残留条目（status={}，允许恢复）, threadId={}", st, threadId);
+                Disposable stale = activeStreams.remove(threadId);
+                if (stale != null && !stale.isDisposed()) {
+                    stale.dispose();
+                }
             } else {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "该流程正在执行中，请勿重复恢复");
             }
@@ -816,12 +866,13 @@ public class RdWorkflowService {
         int page = query.getPage() != null && query.getPage() > 0 ? query.getPage() : 1;
         int pageSize = query.getPageSize() != null && query.getPageSize() > 0 ? query.getPageSize() : 15;
 
-        // PageHelper 分页
-        com.github.pagehelper.PageHelper.startPage(page, pageSize);
-        com.github.pagehelper.Page<WorkflowMetadata> pageResult =
-                (com.github.pagehelper.Page<WorkflowMetadata>) metadataMapper.selectList(wrapper);
+        // MyBatis-Plus 分页
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<WorkflowMetadata> pageParam =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page, pageSize);
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<WorkflowMetadata> pageResult =
+                metadataMapper.selectPage(pageParam, wrapper);
 
-        java.util.List<com.agenthub.ai.workflow.vo.WorkflowRecordVO> records = pageResult.getResult().stream()
+        java.util.List<com.agenthub.ai.workflow.vo.WorkflowRecordVO> records = pageResult.getRecords().stream()
                 .map(r -> com.agenthub.ai.workflow.vo.WorkflowRecordVO.builder()
                         .threadId(r.getThreadId())
                         .requirement(r.getRequirement())

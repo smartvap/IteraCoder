@@ -1,33 +1,40 @@
 package com.agenthub.ai.base.controller;
 
+import com.agenthub.ai.base.common.ApplicationConstant;
 import com.agenthub.ai.base.context.BaseContext;
+import com.agenthub.ai.base.entity.DailyTokenStats;
 import com.agenthub.ai.base.entity.TokenUsageDetail;
 import com.agenthub.ai.base.entity.TokenUsageSummary;
+import com.agenthub.ai.base.mapper.DailyTokenStatsMapper;
 import com.agenthub.ai.base.mapper.TokenUsageDetailMapper;
 import com.agenthub.ai.base.mapper.TokenUsageSummaryMapper;
 import com.agenthub.ai.base.pojo.dto.TokenUsageQueryDTO;
 import com.agenthub.ai.base.pojo.vo.TokenUsageVO;
+import com.agenthub.ai.base.service.TokenUsageService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.http.server.reactive.ServerHttpRequest;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
 
 @RestController
-@RequestMapping("/api/v1/stats/token")
+@RequestMapping(ApplicationConstant.API_VERSION + "/stats/token")
 @RequiredArgsConstructor
 public class TokenUsageController {
 
     private final TokenUsageDetailMapper detailMapper;
     private final TokenUsageSummaryMapper summaryMapper;
+    private final DailyTokenStatsMapper dailyTokenStatsMapper;
+    private final TokenUsageService tokenUsageService;
 
     /** 获取当前用户/IP 今日用量 */
     @GetMapping("/usage")
-    public TokenUsageVO getTodayUsage(ServerHttpRequest request) {
+    public TokenUsageVO getTodayUsage(HttpServletRequest request) {
         Long userId = BaseContext.getCurrentId();
         String ip = getClientIp(request);
         LocalDate today = LocalDate.now();
@@ -73,6 +80,12 @@ public class TokenUsageController {
     public Page<TokenUsageDetail> getDetail(TokenUsageQueryDTO dto) {
         Page<TokenUsageDetail> page = new Page<>(dto.getPage(), dto.getPageSize());
         LambdaQueryWrapper<TokenUsageDetail> qw = new LambdaQueryWrapper<>();
+        if (StringUtils.hasText(dto.getSource())) {
+            qw.eq(TokenUsageDetail::getSource, dto.getSource());
+        }
+        if (StringUtils.hasText(dto.getStepName())) {
+            qw.eq(TokenUsageDetail::getStepName, dto.getStepName());
+        }
         qw.orderByDesc(TokenUsageDetail::getRequestTime);
         return detailMapper.selectPage(page, qw);
     }
@@ -117,7 +130,7 @@ public class TokenUsageController {
     }
 
     @PostMapping("/sync")
-    public String syncUsage(@RequestBody Map<String, Object> data, ServerHttpRequest request) {
+    public String syncUsage(@RequestBody Map<String, Object> data, HttpServletRequest request) {
         TokenUsageDetail detail = new TokenUsageDetail();
         detail.setUserId(BaseContext.getCurrentId());
         detail.setIpAddress(getClientIp(request));
@@ -127,19 +140,68 @@ public class TokenUsageController {
         detail.setTotalDurationMs(((Number) data.getOrDefault("totalDurationMs", 0)).longValue());
         detail.setRequestTime(new Date());
         detail.setStatus(1);
+        detail.setSource((String) data.getOrDefault("source", "chat"));
+        detail.setStepName((String) data.getOrDefault("stepName", null));
         detailMapper.insert(detail);
         return "ok";
     }
 
-    private String getClientIp(ServerHttpRequest request) {
-        String ip = request.getHeaders().getFirst("X-Forwarded-For");
+    /**
+     * 通用 Token 上报端点
+     * 供 workflow 服务、前端等任何来源上报 token 使用统计
+     */
+    @PostMapping("/report")
+    public Map<String, Object> reportUsage(@RequestBody Map<String, Object> data, HttpServletRequest request) {
+        Long userId = BaseContext.getCurrentId();
+        String ip = getClientIp(request);
+        String modelName = (String) data.getOrDefault("modelName", "unknown");
+        int promptTokens = ((Number) data.getOrDefault("promptTokens", 0)).intValue();
+        int completionTokens = ((Number) data.getOrDefault("completionTokens", 0)).intValue();
+        long totalDurationMs = ((Number) data.getOrDefault("totalDurationMs", 0)).longValue();
+        String source = (String) data.getOrDefault("source", "workflow");
+        String stepName = (String) data.get("stepName");
+        int status = ((Number) data.getOrDefault("status", 1)).intValue();
+
+        tokenUsageService.recordAsync(userId, ip, modelName,
+                promptTokens, completionTokens, totalDurationMs, status, source, stepName);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("code", 0);
+        result.put("message", "ok");
+        return result;
+    }
+
+    /**
+     * 获取今日全局累计 Token 统计（所有用户合计）
+     */
+    @GetMapping("/daily-cumulative")
+    public DailyTokenStats getDailyCumulative() {
+        LocalDate today = LocalDate.now();
+        Date statDate = Date.from(today.atStartOfDay(ZoneId.systemDefault()).toInstant());
+
+        DailyTokenStats stats = dailyTokenStatsMapper.selectOne(
+                new LambdaQueryWrapper<DailyTokenStats>()
+                        .eq(DailyTokenStats::getStatDate, statDate)
+        );
+
+        if (stats == null) {
+            stats = new DailyTokenStats();
+            stats.setTotalRequests(0);
+            stats.setTotalPromptTokens(0L);
+            stats.setTotalCompletionTokens(0L);
+            stats.setTotalDurationMs(0L);
+            stats.setTotalUsers(0);
+        }
+        return stats;
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
         if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeaders().getFirst("X-Real-IP");
+            ip = request.getHeader("X-Real-IP");
         }
         if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddress() != null
-                    ? request.getRemoteAddress().getAddress().getHostAddress()
-                    : "127.0.0.1";
+            ip = request.getRemoteAddr();
         }
         if (ip != null && ip.contains(",")) {
             ip = ip.split(",")[0].trim();

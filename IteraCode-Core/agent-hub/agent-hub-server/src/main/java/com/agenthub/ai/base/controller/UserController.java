@@ -173,6 +173,10 @@ public class UserController {
     @Operation(summary = "info",description = "根据id查询user信息")
     public BaseResponse<User> getById(@PathVariable Long id){
         User employee = userService.getById(id);
+        if (employee != null) {
+            // 不返回密码字段，避免敏感信息泄露
+            employee.setPassword(null);
+        }
         return ResultUtils.success(employee);
     }
 

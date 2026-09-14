@@ -134,6 +134,7 @@ public class ProjectService {
             if (runExit == 0) {
                 result.put("success", true);
                 result.put("containerId", runOutput.trim());
+                result.put("url", "http://localhost:8080");
                 result.put("message", "Docker 部署成功！容器ID: " + runOutput.trim() + "\n访问 http://localhost:8080");
             } else {
                 result.put("success", false);

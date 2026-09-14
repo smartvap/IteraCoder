@@ -58,7 +58,10 @@ public class LLMConfig {
             var httpClient = HttpClient.newBuilder()
                     .connectTimeout(ollamaTimeout)
                     .build();
-            builder.requestFactory(new JdkClientHttpRequestFactory(httpClient));
+            var factory = new JdkClientHttpRequestFactory(httpClient);
+            // readTimeout 保护：防止 CPU 慢推理时永久阻塞（默认 10 分钟）
+            factory.setReadTimeout(Duration.ofMinutes(10));
+            builder.requestFactory(factory);
         };
     }
 
@@ -146,6 +149,15 @@ public class LLMConfig {
         }
         log.info("Ollama API: baseUrl={}", baseUrl);
         return OllamaApi.builder().baseUrl(baseUrl).build();
+    }
+
+    /**
+     * 共享 OllamaApi Bean，供 DynamicChatModel 等动态创建模型时复用。
+     * 该实例通过 RestClientCustomizer 获得 readTimeout 保护。
+     */
+    @Bean
+    public OllamaApi sharedOllamaApi() {
+        return buildOllamaApi();
     }
 
     private Duration parseTimeout(String timeoutStr) {

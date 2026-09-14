@@ -7,6 +7,7 @@ import com.agenthub.ai.base.logger.ConversationLogger;
 import com.agenthub.ai.base.config.ModelConfigProperties;
 import com.agenthub.ai.base.context.BaseContext;
 import com.agenthub.ai.base.service.TokenUsageService;
+import com.agenthub.ai.base.service.SensitiveWordService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -94,6 +95,7 @@ public class ChatController2 {
 
     private final TokenUsageService tokenUsageService;
     private final ApplicationContext applicationContext;
+    private final SensitiveWordService sensitiveWordService;
 
     /**
      * 流式对话接口
@@ -119,7 +121,21 @@ public class ChatController2 {
             @RequestParam(value = "apiKey", defaultValue = "") String apiKey,
             @RequestParam(value = "messages", defaultValue = "") String messagesJson,
             @RequestParam(value = "lang", defaultValue = "zh-CN") String lang,
+            /** 2026-08-13 新增：最大生成 token 数（代码生成传 8192，普通对话默认 2048） */
+            @RequestParam(value = "maxTokens", defaultValue = "2048") int maxTokens,
             HttpServletRequest request) {
+
+        // 敏感词过滤
+        var matchedWords = sensitiveWordService.check(message);
+        if (!matchedWords.isEmpty()) {
+            log.warn("消息包含敏感词，已拦截: {}", matchedWords);
+            return Flux.just(
+                    ServerSentEvent.<String>builder()
+                            .event("content")
+                            .data("您的消息包含敏感词，请修改后重新发送")
+                            .build(),
+                    DONE_EVENT);
+        }
 
         long requestStart = System.currentTimeMillis();
         // 使用请求参数中的 Ollama URL，否则使用默认配置
@@ -147,7 +163,7 @@ public class ChatController2 {
 
         Flux<ServerSentEvent<String>> flux;
         if (isLocal || apiUrl.isEmpty()) {
-            flux = handleLocalStream(model, message, messagesJson, requestStart, lang, effectiveOllamaUrl);
+            flux = handleLocalStream(model, message, messagesJson, requestStart, lang, effectiveOllamaUrl, maxTokens);
         } else {
             flux = handleRemoteStream(model, message, messagesJson, lang, requestStart);
         }
@@ -242,7 +258,7 @@ public class ChatController2 {
         return result;
     }
 
-    private Flux<ServerSentEvent<String>> handleLocalStream(String model, String message, String messagesJson, long requestStart, String lang, String ollamaUrl) {
+    private Flux<ServerSentEvent<String>> handleLocalStream(String model, String message, String messagesJson, long requestStart, String lang, String ollamaUrl, int maxTokens) {
         long streamStart = System.currentTimeMillis();
         AtomicInteger chunkCount = new AtomicInteger(0);
         StringBuilder fullContent = new StringBuilder();
@@ -270,7 +286,7 @@ public class ChatController2 {
                         "stream", true,
                         "options", Map.of(
                                 "temperature", 0.7,
-                                "num_predict", 2048,      // 限制最大生成 token，防止过长
+                                "num_predict", maxTokens,   // 可由前端 maxTokens 参数覆盖（代码生成用更大的值）
                                 "num_ctx", 4096,           // 上下文窗口
                                 "repeat_penalty", 1.1,    // 减少重复循环
                                 "repeat_last_n", 256

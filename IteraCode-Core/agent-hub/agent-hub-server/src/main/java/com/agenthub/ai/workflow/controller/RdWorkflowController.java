@@ -46,19 +46,20 @@ public class RdWorkflowController {
     @PostMapping("/start")
     @Loggable
     public BaseResponse<RdWorkflowResultVO> start(@RequestBody RdWorkflowStartRequest request) {
-        log.info("启动研发工作流: {}", request.getRequirement());
-        return ResultUtils.success(rdWorkflowService.start(request.getRequirement()));
+        log.info("启动研发工作流: {}, model={}", request.getRequirement(), request.getModelName());
+        return ResultUtils.success(rdWorkflowService.start(request.getRequirement(), request.getModelName()));
     }
 
     @Operation(summary = "人工审核恢复", description = "提交审核决策 APPROVED/SENT_BACK/TERMINATED 恢复流程")
     @PostMapping("/resume")
     @Loggable
     public BaseResponse<RdWorkflowResultVO> resume(@RequestBody RdWorkflowResumeRequest request) {
-        log.info("恢复工作流: threadId={}, decision={}", request.getThreadId(), request.getReviewDecision());
+        log.info("恢复工作流: threadId={}, decision={}, model={}", request.getThreadId(), request.getReviewDecision(), request.getModelName());
         return ResultUtils.success(rdWorkflowService.resume(
                 request.getThreadId(),
                 request.getReviewDecision(),
-                request.getComment()));
+                request.getComment(),
+                request.getModelName()));
     }
 
     @Operation(summary = "查询工作流状态")

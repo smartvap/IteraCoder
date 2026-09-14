@@ -49,6 +49,8 @@ public class WebFluxConfig implements WebFilter {
             ApplicationConstant.API_VERSION + "/chat2",      // 流式对话 + 模型列表
             ApplicationConstant.API_VERSION + "/stats",
             ApplicationConstant.API_VERSION + "/model/config",
+            ApplicationConstant.API_VERSION + "/conversation",
+            ApplicationConstant.API_VERSION + "/workflow-record",
             "/doc.html", "/webjars/", "/swagger-resources/", "/v3/api-docs/"
     );
 
