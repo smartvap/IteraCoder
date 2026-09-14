@@ -1,5 +1,6 @@
 import { defineStore } from "pinia"
 import { ref, computed } from "vue"
+import { saveConversation, deleteConversation } from "@/api/ChatApi"
 
 const STORAGE_KEY = "agent-hub-sessions"
 const CURRENT_KEY = "agent-hub-current-session"
@@ -121,29 +122,6 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
-  async function deleteSession(id: string) {
-    delete sessions.value[id]
-    if (db()) {
-      await db()!.deleteSession(id)
-      if (currentSessionId.value === id) {
-        const remaining = Object.keys(sessions.value)
-        currentSessionId.value = remaining.length > 0 ? remaining[0] : null
-        await db()!.setConfig("current-session-id", currentSessionId.value ?? "")
-      }
-    } else {
-      if (currentSessionId.value === id) {
-        const remaining = Object.keys(sessions.value)
-        currentSessionId.value = remaining.length > 0 ? remaining[0] : null
-        if (currentSessionId.value) {
-          localStorage.setItem(CURRENT_KEY, currentSessionId.value)
-        } else {
-          localStorage.removeItem(CURRENT_KEY)
-        }
-      }
-      persist()
-    }
-  }
-
   async function setSessionTitle(id: string, title: string) {
     const session = sessions.value[id]
     if (!session) return
@@ -177,6 +155,8 @@ export const useSessionStore = defineStore("session", () => {
     } else {
       persist()
     }
+    // 同步保存到 MySQL
+    syncToMySQL(id, messages)
   }
 
   async function addMessage(id: string, msg: ChatMessage) {
@@ -194,6 +174,51 @@ export const useSessionStore = defineStore("session", () => {
     } else {
       persist()
     }
+    // 同步最后一条消息到 MySQL
+    syncToMySQL(id, [msg])
+  }
+
+  async function deleteSession(id: string) {
+    delete sessions.value[id]
+    if (db()) {
+      await db()!.deleteSession(id)
+      if (currentSessionId.value === id) {
+        const remaining = Object.keys(sessions.value)
+        currentSessionId.value = remaining.length > 0 ? remaining[0] : null
+        await db()!.setConfig("current-session-id", currentSessionId.value ?? "")
+      }
+    } else {
+      if (currentSessionId.value === id) {
+        const remaining = Object.keys(sessions.value)
+        currentSessionId.value = remaining.length > 0 ? remaining[0] : null
+        if (currentSessionId.value) {
+          localStorage.setItem(CURRENT_KEY, currentSessionId.value)
+        } else {
+          localStorage.removeItem(CURRENT_KEY)
+        }
+      }
+      persist()
+    }
+    // 同步删除 MySQL 中的对话记录
+    deleteFromMySQL(id)
+  }
+
+  /** 异步同步消息到 MySQL（静默失败） */
+  function syncToMySQL(sessionId: string, msgs: ChatMessage[]) {
+    const messages = msgs.map(m => ({
+      role: m.role,
+      content: m.content,
+    }))
+    saveConversation(sessionId, messages).catch(() => {
+      // 静默失败，不影响本地存储
+    })
+  }
+
+  /** 异步删除 MySQL 中的对话记录（静默失败） */
+  function deleteFromMySQL(sessionId: string) {
+    deleteConversation(sessionId).catch(() => {
+      // 静默失败
+    })
   }
 
   function hasSession(): boolean {

@@ -9,6 +9,7 @@ declare module "vue-router" {
     roles?: string[]
     description?: string
     icon?: string
+    title?: string
   }
 }
 

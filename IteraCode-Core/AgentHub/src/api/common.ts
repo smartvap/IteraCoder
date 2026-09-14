@@ -63,6 +63,7 @@ export const enum WorkflowApi {
   Start  = "/workflow/start",
   State  = "/workflow/state",
   Resume = "/workflow/resume",
+  Recover = "/workflow/recover",
 }
 
 export const enum ProjectApi {

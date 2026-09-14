@@ -113,8 +113,10 @@
  * 因为 Spring WebFlux 的 {@code @RequestParam} 不解析 form body。</p>
  */
 import "highlight.js/styles/github.css"
+import { ref, nextTick, watch, onMounted } from "vue"
 import { Delete, Refresh, View, Loading } from "@element-plus/icons-vue"
 import { useAppStore } from "@/store/app"
+import { reportTokenUsage } from "@/api/ChatApi"
 import service from "@/http"
 import { ElMessage } from "element-plus"
 import { marked } from "marked"
@@ -362,6 +364,15 @@ async function sendMessage() {
     messages.value[lastIndex].tokenCount = charCount         // 字符数
     messages.value[lastIndex].streamDuration = streamStart ? now - streamStart : 0 // 流式耗时（不含思考）
     scrollToBottom()
+    // 上报 token 使用量（估算：2字符≈1token）
+    const elapsed = now - msgStart
+    reportTokenUsage({
+      modelName: selectedModel.value,
+      promptTokens: 0,
+      completionTokens: Math.ceil(charCount / 2),
+      totalDurationMs: elapsed,
+      source: "chat",
+    }).catch(() => { /* 静默失败 */ })
   }
 }
 

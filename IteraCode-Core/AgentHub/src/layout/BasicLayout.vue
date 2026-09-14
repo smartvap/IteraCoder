@@ -28,12 +28,18 @@
           <div class="header-right">
             <el-dropdown v-if="appStore.isLoggedIn" @command="handleCommand">
               <span class="user-dropdown">
-                <el-icon :size="16"><User /></el-icon>
-                {{ username }}
+                <el-avatar :size="24" class="user-avatar">{{ avatarText }}</el-avatar>
+                <span class="username-text">{{ username }}</span>
                 <el-icon :size="12" style="margin-left:2px"><ArrowDown /></el-icon>
               </span>
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item command="profile">
+                    <el-icon :size="16"><User /></el-icon> 个人中心
+                  </el-dropdown-item>
+                  <el-dropdown-item command="changePassword">
+                    <el-icon :size="16"><Lock /></el-icon> 修改密码
+                  </el-dropdown-item>
                   <el-dropdown-item command="settings">
                     <el-icon :size="16"><Setting /></el-icon> 系统设置
                   </el-dropdown-item>
@@ -78,8 +84,9 @@ import { logout } from "@/api/authUtils"
 import { useAppStore } from "@/store/app"
 import { i18n } from "@/locales"
 import BasicAside from "@/components/BasicAside.vue"
-import { User, ArrowDown, Setting, SwitchButton, Fold, Expand } from "@element-plus/icons-vue"
+import { User, ArrowDown, Setting, SwitchButton, Fold, Expand, Lock } from "@element-plus/icons-vue"
 import routes from "@/router/config"
+import type { RouteRecordRaw } from "vue-router"
 
 const isElectron = !!(window as any).electronAPI
 
@@ -103,10 +110,24 @@ const asideStyle = computed(() => ({
 const isLoginPage = computed(() => route.path === "/login")
 const username = computed(() => appStore.username || "用户")
 
+const avatarText = computed(() => {
+  const name = username.value
+  return name.charAt(0).toUpperCase()
+})
+
 const currentTitle = computed(() => {
-  const r = routes.find((r) => r.path === route.path)
-  const desc = r?.meta?.description as string
-  return desc ? i18n.global.t(desc) : "Agent Hub"
+  const findDesc = (list: RouteRecordRaw[]): string | undefined => {
+    for (const r of list) {
+      if (r.path === route.path) return r.meta?.description as string
+      if (r.children) {
+        const d = findDesc(r.children)
+        if (d) return d
+      }
+    }
+    return undefined
+  }
+  const desc = findDesc(routes)
+  return desc ? i18n.global.t(desc) : "智研协同平台"
 })
 
 function toggleAside() {
@@ -114,7 +135,11 @@ function toggleAside() {
 }
 
 const handleCommand = (command: string) => {
-  if (command === "settings") {
+  if (command === "profile") {
+    router.push("/profile")
+  } else if (command === "changePassword") {
+    router.push({ path: "/profile", query: { tab: "password" } })
+  } else if (command === "settings") {
     router.push("/settings")
   } else if (command === "logout") {
     appStore.logout()
@@ -183,12 +208,26 @@ const handleCommand = (command: string) => {
     .user-dropdown {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
       cursor: pointer;
       color: #606266;
       font-size: 14px;
       line-height: normal;
       &:hover { color: #409eff; }
+
+      .user-avatar {
+        background: #409eff;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .username-text {
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
     }
   }
 }

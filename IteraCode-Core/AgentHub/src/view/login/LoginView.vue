@@ -3,9 +3,8 @@
     <!-- 未登录：展示入口按钮 -->
     <div v-if="!appStore.isLoggedIn && !showLogin" class="login-card">
       <div class="login-header">
-        <div class="logo">🤖</div>
-        <h2>个人中心</h2>
-        <p class="subtitle">RDA-AI 自动化研发智能体系统</p>
+        <img class="login-logo" src="/icon.png" alt="logo" />
+        <h2>智研协同平台</h2>
       </div>
       <div class="login-entry">
         <el-button type="primary" size="large" class="btn-block" @click="showLogin = true">
@@ -22,9 +21,8 @@
     <!-- 登录表单 -->
     <div v-else-if="!appStore.isLoggedIn" class="login-card">
       <div class="login-header">
-        <div class="logo">🤖</div>
-        <h2>用户登录</h2>
-        <p class="subtitle">RDA-AI 自动化研发智能体系统</p>
+        <img class="login-logo" src="/icon.png" alt="logo" />
+        <h2>智研协同平台</h2>
       </div>
 
       <el-form
@@ -83,9 +81,8 @@
     <!-- 游客登录：请真实登录 -->
     <div v-else-if="appStore.skipLogin" class="login-card">
       <div class="login-header">
-        <div class="logo">🤖</div>
-        <h2>个人中心</h2>
-        <p class="subtitle">您正在使用游客模式</p>
+        <img class="login-logo" src="/icon.png" alt="logo" />
+        <h2>智研协同平台</h2>
       </div>
       <div class="login-entry">
         <el-button type="primary" size="large" class="btn-block" @click="handleGuestToLogin">
@@ -97,8 +94,8 @@
     <!-- 已登录：展示用户信息 -->
     <div v-else class="login-card">
       <div class="login-header">
-        <div class="logo">🤖</div>
-        <h2>个人中心</h2>
+        <img class="login-logo" src="/icon.png" alt="logo" />
+        <h2>智研协同平台</h2>
         <p class="subtitle">{{ appStore.username }}，欢迎回来</p>
       </div>
       <div class="login-entry" style="text-align: center;">
@@ -167,6 +164,16 @@ const showLogin = ref(false)
 const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
 
+// 页面加载时清理失效的游客状态，确保入口页（登录+跳过登录）正常展示
+onMounted(() => {
+  const token = localStorage.getItem("token")
+  // 游客 token 不算真正登录，清除后强制回到入口页
+  if (token === "guest-token") {
+    localStorage.removeItem("token")
+  }
+  showLogin.value = false
+})
+
 const loginForm = reactive({
   userName: "",
   password: "",
@@ -191,6 +198,7 @@ async function handleLogin() {
       localStorage.setItem("userRole", data.data.userName)
       localStorage.setItem("userId", data.data.id)
       localStorage.setItem("username", loginForm.userName)
+      appStore.setAuth(data.data.token, loginForm.userName)
       appStore.saveSettings({})
       // 加载服务端配置
       if (data.data.settings) {
@@ -227,6 +235,7 @@ function handleGuestToLogin() {
 function handleSkipLogin() {
   appStore.skipLoginAction()
   localStorage.setItem("token", "guest-token")
+  appStore.setAuth("guest-token", "")
   ElMessage.success("已跳过登录")
   router.push("/chat-index")
 }
@@ -312,7 +321,12 @@ async function handleRegister() {
   text-align: center;
   margin-bottom: 30px;
 
-  .logo { font-size: 48px; line-height: 1; margin-bottom: 8px; }
+  .login-logo {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    margin-bottom: 8px;
+  }
   h2 { font-size: 22px; color: #303133; margin-bottom: 4px; font-weight: 600; }
   .subtitle { color: #909399; font-size: 14px; }
 }

@@ -127,3 +127,21 @@ export interface StoreFile {
   createTime: Date
   updateTime: Date
 }
+
+// ==================== 对话记录 & Token 上报 ====================
+
+export interface ConversationMessage {
+  role: string
+  content: string
+  modelName?: string
+}
+
+export interface ReportTokenDTO {
+  modelName: string
+  promptTokens: number
+  completionTokens: number
+  totalDurationMs: number
+  source?: string
+  stepName?: string
+  status?: number
+}

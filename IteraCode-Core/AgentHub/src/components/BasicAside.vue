@@ -9,14 +9,37 @@
       active-text-color="#91CC75"
     >
       <div class="menu-header" :style="{ backgroundColor: menuBgColor }">
-        <h1 v-show="!collapsed">Agent Hub</h1>
-        <el-text v-show="!collapsed" style="color: #bfcbd9" size="small">需求拆解智能体</el-text>
-        <el-icon v-show="collapsed" size="24" style="color: #fff; margin: 8px 0;">🤖</el-icon>
+        <img v-show="!collapsed" class="aside-logo" src="/icon.png" alt="logo" />
+        <h1 v-show="!collapsed">智研协同平台</h1>
+        <img v-show="collapsed" class="aside-logo-collapsed" src="/icon.png" alt="logo" />
       </div>
       <el-divider v-show="!collapsed" />
 
       <template v-for="item in menuRouterList" :key="item.path">
+        <!-- 有子菜单：渲染二级菜单 -->
+        <el-sub-menu v-if="item.children && item.children.length > 0" :index="item.path">
+          <template #title>
+            <el-icon>
+              <component :is="item.meta?.icon"></component>
+            </el-icon>
+            <span>{{ item.meta?.description ? $t(item.meta.description) : '' }}</span>
+          </template>
+          <el-menu-item
+            v-for="child in item.children"
+            :key="child.path"
+            :index="child.path"
+            @click="handleSelect(child)"
+          >
+            <el-icon>
+              <component :is="child.meta?.icon"></component>
+            </el-icon>
+            <template #title>{{ child.meta?.description ? $t(child.meta.description) : '' }}</template>
+          </el-menu-item>
+        </el-sub-menu>
+
+        <!-- 无子菜单：渲染一级菜单 -->
         <el-menu-item
+          v-else
           :index="item.path"
           @click="handleSelect(item)"
         >
@@ -51,18 +74,33 @@ const emit = defineEmits(["toggleAside"])
 const path = router.currentRoute.value.fullPath
 const defaultPath = ref(path === "/" ? "/login" : path)
 
-// 过滤出菜单项，根据登录状态和角色控制显示
+// 过滤出菜单项，根据登录状态和角色控制显示（支持二级菜单）
 const menuRouterList = computed(() => {
   const token = !!localStorage.getItem("token")
   const userRole = localStorage.getItem("userRole")
 
-  return routes.filter((item) => {
+  const canShow = (item: RouteRecordRaw) => {
     if (!item.meta?.isMenu) return false
     if (item.path === "/login") return !token
     if (item.meta?.requiresAuth && !token) return false
     if (item.meta?.roles && userRole && !item.meta.roles.includes(userRole)) return false
     return true
-  })
+  }
+
+  return routes
+    .filter(canShow)
+    .map((item) => {
+      if (item.children && item.children.length > 0) {
+        const visibleChildren = item.children.filter(canShow)
+        return { ...item, children: visibleChildren }
+      }
+      return item
+    })
+    .filter((item) => {
+      // 父级菜单没有可见子菜单时隐藏
+      if (item.children && item.children.length > 0) return item.children.length > 0
+      return true
+    })
 })
 
 router.afterEach((to) => {
@@ -112,6 +150,20 @@ function darkenColor(hex: string, amount: number = 20): string {
     margin: 0;
     color: #ffffff;
     letter-spacing: 2px;
+  }
+
+  .aside-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+  }
+
+  .aside-logo-collapsed {
+    width: 24px;
+    height: 24px;
+    border-radius: 5px;
+    margin: 8px 0;
   }
 }
 

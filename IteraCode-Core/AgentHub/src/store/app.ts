@@ -87,6 +87,10 @@ export const useAppStore = defineStore("app", {
       settingsStr === null ? defaultSettings : JSON.parse(settingsStr)
     return {
       ...settings,
+      /** 登录令牌（响应式，与 localStorage 同步） */
+      authToken: localStorage.getItem("token") || "",
+      /** 登录用户名（响应式，与 localStorage 同步） */
+      authUsername: localStorage.getItem("username") || "",
     }
   },
 
@@ -95,16 +99,14 @@ export const useAppStore = defineStore("app", {
     isElectron(): boolean {
       return !!(window as any).electronAPI
     },
-    /** 是否已登录（实时读取 localStorage，排除游客令牌） */
+    /** 是否已登录（排除游客令牌） */
     isLoggedIn(): boolean {
-      const token = localStorage.getItem("token")
-      return !!token && token !== "guest-token"
+      return !!this.authToken && this.authToken !== "guest-token"
     },
     /** 当前用户名（已登录时返回，游客模式返回空） */
     username(): string {
-      const token = localStorage.getItem("token")
-      if (!token || token === "guest-token") return ""
-      return localStorage.getItem("username") || ""
+      if (!this.authToken || this.authToken === "guest-token") return ""
+      return this.authUsername
     },
   },
 
@@ -126,6 +128,8 @@ export const useAppStore = defineStore("app", {
         ollamaUrl: this.ollamaUrl,
         apiUrl: this.apiUrl,
         apiKey: this.apiKey,
+        remoteProvider: this.remoteProvider,
+        remoteModel: this.remoteModel,
         currentModel: this.currentModel,
         modelConfigs: this.modelConfigs,
         showReasoning: this.showReasoning,
@@ -146,7 +150,20 @@ export const useAppStore = defineStore("app", {
       localStorage.removeItem("username")
       localStorage.removeItem("userRole")
       localStorage.removeItem("userId")
+      this.authToken = ""
+      this.authUsername = ""
       import("@/http/config").then(m => m.refreshBaseUrl()).catch(() => {})
+    },
+
+    /**
+     * 同步登录状态到响应式 store（登录/跳过登录后调用）
+     *
+     * @param token 登录令牌；游客模式传入 "guest-token"
+     * @param username 用户名
+     */
+    setAuth(token: string, username: string) {
+      this.authToken = token
+      this.authUsername = username || ""
     },
 
     /** 跳过登录（游客模式） */

@@ -16,6 +16,8 @@ export interface ChatRouteResponse {
 /** 启动工作流请求 */
 export interface WorkflowStartRequest {
   requirement: string
+  /** 前端选择的模型名（2026-08-13 新增，支持动态选择模型） */
+  modelName?: string
 }
 
 /** 审核恢复请求 */
@@ -23,6 +25,8 @@ export interface WorkflowResumeRequest {
   threadId: string
   reviewDecision: "APPROVED" | "SENT_BACK" | "TERMINATED"
   comment?: string
+  /** 前端选择的模型名（可选，恢复执行后代码生成等节点使用） */
+  modelName?: string
 }
 
 /** 工作流结果 */
@@ -59,11 +63,14 @@ export async function routeChatMessage(message: string): Promise<ChatRouteRespon
 /**
  * 启动研发工作流
  * POST /api/v1/workflow/start
+ *
+ * @param requirement 研发需求原文
+ * @param modelName   前端选择的模型名（2026-08-13 新增，传给后端动态选择模型）
  */
-export async function startWorkflowApi(requirement: string): Promise<WorkflowResult> {
+export async function startWorkflowApi(requirement: string, modelName?: string): Promise<WorkflowResult> {
   const res = await service.post<ApiResult<WorkflowResult>>(
     WorkflowApi.Start,
-    { requirement }
+    { requirement, modelName }
   )
   return (res as any).data
 }
@@ -90,7 +97,19 @@ export async function resumeWorkflowApi(req: WorkflowResumeRequest): Promise<Wor
       threadId: req.threadId,
       reviewDecision: req.reviewDecision,
       comment: req.comment,
+      modelName: req.modelName,
     }
+  )
+  return (res as any).data
+}
+
+/**
+ * 恢复执行工作流（RUNNING / FAILED 状态，从中断点或 checkpoint 继续）
+ * POST /api/v1/workflow/recover/{threadId}
+ */
+export async function recoverWorkflowApi(threadId: string): Promise<WorkflowResult> {
+  const res = await service.post<ApiResult<WorkflowResult>>(
+    `${WorkflowApi.Recover}/${encodeURIComponent(threadId)}`
   )
   return (res as any).data
 }

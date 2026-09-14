@@ -141,6 +141,213 @@ export function getTodayTokenUsage(): Promise<{
  * @param params 分页参数
  * @returns 分页明细数据
  */
-export function getTokenUsageDetail(params: { page: number; pageSize: number }): Promise<any> {
+export function getTokenUsageDetail(params: { page: number; pageSize: number; source?: string; stepName?: string }): Promise<any> {
   return service.get("/stats/token/detail", { params })
+}
+
+/**
+ * 通用 Token 上报
+ * 供 workflow 服务、前端等任何来源上报 token 使用统计
+ */
+export function reportTokenUsage(data: {
+  modelName: string
+  promptTokens: number
+  completionTokens: number
+  totalDurationMs: number
+  source?: string
+  stepName?: string
+  status?: number
+}): Promise<any> {
+  return service.post("/stats/token/report", data)
+}
+
+/**
+ * 批量保存对话消息到 MySQL
+ */
+export function saveConversation(sessionId: string, messages: Array<{
+  role: string
+  content: string
+  modelName?: string
+}>): Promise<any> {
+  return service.post("/conversation/save", { sessionId, messages })
+}
+
+/**
+ * 按会话ID查询对话历史
+ */
+export function getConversation(sessionId: string): Promise<any[]> {
+  return service.get(`/conversation/${sessionId}`)
+}
+
+/**
+ * 分页查询会话列表
+ */
+export function getConversationSessions(page: number, pageSize: number, params?: {
+  keyword?: string
+  type?: "chat" | "workflow"
+}): Promise<{
+  records: Array<{
+    sessionId: string
+    title: string
+    preview: string
+    messageCount: number
+    lastTime: string
+    firstTime: string
+    hasWorkflow?: boolean
+    workflowStatus?: string
+    workflowThreadId?: string
+    workflowRounds?: number
+    workflowRequirement?: string
+  }>
+  total: number
+  size: number
+  current: number
+}> {
+  return service.get("/conversation/sessions", {
+    params: { page, pageSize, keyword: params?.keyword || undefined, type: params?.type || undefined },
+  })
+}
+
+/**
+ * 删除会话的对话历史
+ */
+export function deleteConversation(sessionId: string): Promise<any> {
+  return service.delete(`/conversation/${sessionId}`)
+}
+
+/**
+ * 获取今日全局累计 Token 统计
+ */
+export function getDailyCumulative(): Promise<{
+  totalRequests: number
+  totalPromptTokens: number
+  totalCompletionTokens: number
+  totalDurationMs: number
+  totalUsers: number
+}> {
+  return service.get("/stats/token/daily-cumulative")
+}
+
+/**
+ * 保存工作流执行记录（每轮一条）
+ */
+export function saveWorkflowRecord(data: {
+  sessionId: string
+  threadId: string
+  round?: number
+  requirement?: string | null
+  status?: string
+  decompositionResult?: string | null
+  reasoningResult?: string | null
+  reviewDecision?: string | null
+  reviewComment?: string | null
+  codegenFiles?: string | null
+  promptTokens?: number
+  completionTokens?: number
+  totalDurationMs?: number
+  workflowMessage?: string | null
+  startTime?: string | null
+  endTime?: string
+}): Promise<any> {
+  return service.post("/workflow-record/save", data)
+}
+
+/**
+ * 按会话ID查询所有工作流执行记录
+ */
+export function getWorkflowRecords(sessionId: string): Promise<Array<{
+  id: number
+  sessionId: string
+  threadId: string
+  round: number
+  requirement: string
+  status: string
+  decompositionResult: string
+  reasoningResult: string
+  reviewDecision: string
+  reviewComment: string
+  codegenFiles: string
+  promptTokens: number
+  completionTokens: number
+  totalDurationMs: number
+  workflowMessage: string
+  startTime: string
+  endTime: string
+  createTime: string
+}>> {
+  return service.get(`/workflow-record/session/${sessionId}`)
+}
+
+/**
+ * 查询对话记录历史（从 MySQL 恢复）
+ */
+export function getConversationRecords(sessionId: string): Promise<Array<{
+  id: number
+  sessionId: string
+  role: string
+  content: string
+  modelName: string
+  createTime: string
+}>> {
+  return service.get(`/conversation/${sessionId}`)
+}
+
+/**
+ * 按线程ID查询工作流记录详情
+ */
+export function getWorkflowRecordByThread(threadId: string): Promise<WorkflowRecordDetail> {
+  return service.get(`/workflow-record/thread/${threadId}`)
+}
+
+interface WorkflowRecordDetail {
+  id: number
+  sessionId: string
+  threadId: string
+  round: number
+  requirement: string
+  status: string
+  decompositionResult: string
+  reasoningResult: string
+  reviewDecision: string
+  reviewComment: string
+  codegenFiles: string
+  promptTokens: number
+  completionTokens: number
+  totalDurationMs: number
+  workflowMessage: string
+  startTime: string
+  endTime: string
+  createTime: string
+}
+
+/**
+ * 分页查询工作流列表（来自 workflow_record 表，每个线程最新一条）
+ */
+export function getWorkflowList(params: {
+  page?: number
+  pageSize?: number
+  status?: string
+  keyword?: string
+}): Promise<{
+  total: number
+  records: WorkflowRecordDetail[]
+}> {
+  return service.get("/workflow-record/list", { params })
+}
+
+/**
+ * 按线程ID下载代码包（返回二进制，由调用方处理 blob）
+ */
+export function downloadWorkflowCode(threadIds: string[]): Promise<any> {
+  return service.get("/workflow/download-code", {
+    params: { threadIds },
+    responseType: "blob",
+  })
+}
+
+/**
+ * 运行部署项目
+ */
+export function deployProjectApi(projectName: string): Promise<any> {
+  return service.post(`/project/deploy/${projectName}`)
 }
