@@ -1,0 +1,15 @@
+services:
+  llm-wiki:
+    build: .
+    container_name: llm-wiki
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data        # 数据持久化（chroma/wiki/meta.db）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # 容器内访问宿主机 Ollama
+    environment:
+      LLM_WIKI_EMBEDDING_BASE_URL: "http://host.docker.internal:11434/v1"
+      LLM_WIKI_EMBEDDING_MODEL: "qwen3-embedding:0.6b"
+      LLM_WIKI_DATA_DIR: "/app/data"
+    restart: unless-stopped

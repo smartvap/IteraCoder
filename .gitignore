@@ -21,6 +21,7 @@ llm-wiki/.docker
 
 .env
 .env.*
+!.env.example
 *.local
 
 *.log

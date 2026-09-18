@@ -1,0 +1,7 @@
+# 数据目录（运行时生成）
+data/
+.venv/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
