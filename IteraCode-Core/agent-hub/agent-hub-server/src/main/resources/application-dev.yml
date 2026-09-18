@@ -38,6 +38,14 @@ spring:
         num-ctx: 3072
         num-gpu: 22
         num-batch: 256
+      - name: ornith-1.5:9b
+        type: ollama
+        model: ornith-1.5:9b
+        temperature: 0.5
+        max-tokens: 4096
+        num-ctx: 3072
+        num-gpu: 22
+        num-batch: 256
       - name: glm-5.2
         type: dashscope
         model: glm-5.2
@@ -56,7 +64,7 @@ spring:
         temperature: 0.5
         max-tokens: 8192
         completions-path: /v4/chat/completions
-    primary: qwen3:8b-q4_K_M
+    primary: ornith-1.5:9b
 
   autoconfigure:
     exclude:
@@ -79,7 +87,7 @@ spring:
 
   datasource:
     username: root
-    url: jdbc:mysql://192.168.46.138:3306/ai_server?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
+    url: jdbc:mysql://192.168.46.143:3306/ai_server?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
     password: 123456
 #    password: root@123456
 #    url: jdbc:mysql://111.10.175.134:3307/ai_server?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
@@ -99,7 +107,7 @@ spring:
         dialect: org.hibernate.dialect.MySQL8Dialect
   data:
     redis:
-      host: 192.168.46.138
+      host: 192.168.46.143
 #      host: 192.168.1.118
       port: 6380
       password: redis123456
@@ -120,6 +128,12 @@ agenthub:
   workflow:
     sandbox:
 #      docker-host: "tcp://111.10.175.134:2375"
-      docker-host: "tcp://192.168.46.138:2375"
+      docker-host: "tcp://192.168.46.143:2375"
       dind-enabled: true
+  # llm-wiki 知识库服务（知识库 B，Python FastAPI 服务）
+  llm-wiki:
+    base-url: http://localhost:8000/api/v1
+    connect-timeout-ms: 3000
+    read-timeout-ms: 60000
+    upload-timeout-ms: 300000     # 上传专用超时（文档 embedding 较慢）
 

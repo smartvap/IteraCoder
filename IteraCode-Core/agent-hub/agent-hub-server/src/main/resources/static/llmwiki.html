@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>llm-wiki 知识库管理</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto;
+               background-color: #f5f5f5; }
+        h1 { color: #333; margin-bottom: 6px; font-size: 22px; }
+        .subtitle { color: #888; font-size: 13px; margin-bottom: 18px; }
+        .section { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px;
+                   box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+        .section h2 { font-size: 15px; color: #333; margin-bottom: 12px; padding-bottom: 8px;
+                      border-bottom: 1px solid #eee; }
+        button { padding: 6px 14px; font-size: 13px; border: none; border-radius: 4px;
+                 cursor: pointer; background-color: #007bff; color: #fff; margin-right: 6px; }
+        button:hover { opacity: 0.9; }
+        button.danger { background-color: #dc3545; }
+        button.gray { background-color: #6c757d; }
+        button.small { padding: 3px 8px; font-size: 12px; }
+        select, input[type=text], input[type=number] { padding: 5px 8px; font-size: 13px;
+                border: 1px solid #ccc; border-radius: 4px; margin-right: 8px; }
+        .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+        .status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+                      background: #dc3545; margin-right: 4px; vertical-align: middle; }
+        .status-dot.ok { background: #28a745; }
+        /* 页面管理：左列表右编辑 */
+        .page-layout { display: flex; gap: 14px; min-height: 420px; }
+        .page-list { width: 240px; flex-shrink: 0; border: 1px solid #eee; border-radius: 6px;
+                     overflow-y: auto; max-height: 480px; }
+        .page-list .type-filter { padding: 8px; border-bottom: 1px solid #eee; }
+        .page-list ul { list-style: none; }
+        .page-list li { padding: 7px 10px; cursor: pointer; font-size: 13px;
+                        border-bottom: 1px solid #f5f5f5; word-break: break-all; }
+        .page-list li:hover { background: #f0f7ff; }
+        .page-list li.active { background: #007bff; color: #fff; }
+        .page-list li .t { color: #999; font-size: 11px; margin-right: 5px; }
+        .page-edit { flex: 1; display: flex; flex-direction: column; }
+        .edit-toolbar { display: flex; align-items: center; margin-bottom: 6px; gap: 6px; }
+        .edit-toolbar .path-label { font-size: 13px; color: #555; font-family: Consolas, monospace;
+                                    flex: 1; word-break: break-all; }
+        #pageContent, #previewBox { width: 100%; min-height: 400px; font-size: 13px;
+                                    border: 1px solid #ddd; border-radius: 4px; padding: 10px; }
+        #pageContent { font-family: Consolas, Monaco, monospace; resize: vertical; }
+        #previewBox { overflow-y: auto; background: #fff; }
+        .hidden { display: none; }
+        /* 检索 */
+        .hit { border: 1px solid #eee; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;
+               background: #fafbfc; }
+        .hit .hit-title { font-weight: bold; font-size: 13px; color: #007bff; }
+        .hit .hit-meta { color: #888; font-size: 12px; margin: 3px 0; }
+        .hit .hit-content { font-size: 12px; color: #444; white-space: pre-wrap;
+                            max-height: 120px; overflow-y: auto; }
+        .badge { display: inline-block; padding: 1px 6px; font-size: 11px; border-radius: 3px;
+                 background: #e9ecef; color: #555; margin-left: 4px; }
+        .badge.vector { background: #d4edda; color: #155724; }
+        .badge.bm25 { background: #cce5ff; color: #004085; }
+        .msg { margin: 6px 0; font-size: 13px; color: #555; white-space: pre-wrap; }
+        .msg.err { color: #dc3545; }
+        .msg.ok { color: #28a745; }
+        pre.report { background: #f6f8fa; border-radius: 4px; padding: 8px; font-size: 12px;
+                     overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>llm-wiki 知识库管理</h1>
+    <div class="subtitle">知识空间 · 知识页维护 · 混合检索 · 增量同步</div>
+
+    <!-- 健康状态 -->
+    <div class="section">
+        <h2>健康状态</h2>
+        <div class="row" id="healthBar">
+            <span id="healthDot" class="status-dot"></span><span id="healthText">检测中…</span>
+        </div>
+    </div>
+
+    <!-- 空间管理 -->
+    <div class="section">
+        <h2>知识空间</h2>
+        <div class="row">
+            <select id="spaceSelect" style="min-width:180px;"></select>
+            <button class="gray small" onclick="loadSpaces(true)">刷新</button>
+            <span style="flex:1"></span>
+            <input type="text" id="newSpaceName" placeholder="新空间名（字母数字._-）" style="width:200px;">
+            <button onclick="createSpace()">新建空间</button>
+        </div>
+        <div class="msg" id="spaceMsg"></div>
+    </div>
+
+    <!-- 知识页管理 -->
+    <div class="section">
+        <h2>知识页管理</h2>
+        <div class="row">
+            <input type="text" id="importSubdir" placeholder="目标目录前缀，如 concepts/（可空）" style="width:240px;">
+            <button onclick="document.getElementById('importFile').click()">导入文档</button>
+            <input type="file" id="importFile" accept=".md,.markdown,.txt,.docx,.pdf,.pptx,.xlsx" multiple
+                   style="display:none;" onchange="importFiles(this.files); this.value='';">
+            <span class="msg" id="importMsg" style="margin:0;"></span>
+        </div>
+        <div id="importReport"></div>
+        <div class="page-layout">
+            <div class="page-list">
+                <div class="type-filter">
+                    <select id="typeFilter" style="width:100%;" onchange="loadPages()"></select>
+                </div>
+                <ul id="pageListUl"><li style="color:#999;">请先选择空间</li></ul>
+            </div>
+            <div class="page-edit">
+                <div class="edit-toolbar">
+                    <span class="path-label" id="currentPath">未选择页面</span>
+                    <button class="small" onclick="newPage()">新建页面</button>
+                    <button class="small gray" id="btnPreview" onclick="togglePreview()">预览</button>
+                    <button class="small" onclick="savePage()">保存</button>
+                    <button class="small danger" onclick="deletePage()">删除</button>
+                </div>
+                <textarea id="pageContent" placeholder="页面内容（markdown，可含 frontmatter）…&#10;---&#10;title: xxx&#10;type: concept&#10;tags: [a, b]&#10;---&#10;正文…"></textarea>
+                <div id="previewBox" class="hidden"></div>
+                <div class="msg" id="pageMsg"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 检索 -->
+    <div class="section">
+        <h2>检索测试</h2>
+        <div class="row">
+            <input type="text" id="searchQuery" placeholder="输入问题，如：投诉量怎么查？" style="flex:1;min-width:300px;">
+            <input type="number" id="searchTopK" value="5" style="width:70px;" min="1" max="50">
+            <select id="searchType" style="width:130px;"><option value="">全部类型</option></select>
+            <button onclick="doSearch()">检索</button>
+        </div>
+        <div id="searchResult"></div>
+    </div>
+
+    <!-- 运维 -->
+    <div class="section">
+        <h2>运维</h2>
+        <div class="row">
+            <button onclick="doSync()">增量同步（扫描磁盘文件）</button>
+            <span class="msg" id="syncMsg" style="margin:0;"></span>
+        </div>
+        <div id="syncReport"></div>
+    </div>
+
+    <script>
+        const API = '/api/v1/llmwiki';
+        // 上传大小上限：与后端 application.yml spring.servlet.multipart.max-file-size = 20MB 对齐
+        const MAX_UPLOAD_SIZE = 20 * 1024 * 1024;
+        const MAX_UPLOAD_SIZE_LABEL = (MAX_UPLOAD_SIZE / (1024 * 1024)) + 'MB';
+        let currentSpace = null;
+        let currentPages = [];
+        let currentPagePath = null;
+
+        // ---------- 通用 ----------
+        function encPath(p) { return p.split('/').map(encodeURIComponent).join('/'); }
+
+        async function api(path, options = {}) {
+            const opts = { headers: { 'Content-Type': 'application/json' }, ...options };
+            const resp = await fetch(API + path, opts);
+            let data;
+            try { data = await resp.json(); } catch (e) { throw new Error('HTTP ' + resp.status); }
+            if (data.code !== 0) throw new Error(data.message || '请求失败(' + data.code + ')');
+            return data.data;
+        }
+
+        function setMsg(el, text, isErr) {
+            el.textContent = text;
+            el.className = 'msg' + (isErr ? ' err' : ' ok');
+        }
+
+        // ---------- 健康 ----------
+        async function loadHealth() {
+            try {
+                const h = await api('/health');
+                document.getElementById('healthDot').className = 'status-dot ok';
+                document.getElementById('healthText').textContent =
+                    'llm-wiki 正常 | embedding=' + (h.embedding_ready ? '✅' : '❌降级BM25')
+                    + ' | 空间数=' + h.spaces + ' | 格式=' + (h.formats || []).join(', ');
+            } catch (e) {
+                document.getElementById('healthDot').className = 'status-dot';
+                document.getElementById('healthText').textContent = '连接失败: ' + e.message
+                    + '（请确认 llm-wiki 服务已启动）';
+            }
+        }
+
+        // ---------- 空间 ----------
+        async function loadSpaces(keepSelect) {
+            try {
+                const spaces = await api('/spaces');
+                const sel = document.getElementById('spaceSelect');
+                const prev = currentSpace;
+                sel.innerHTML = '';
+                if (!spaces.length) {
+                    sel.innerHTML = '<option value="">（无空间，先新建）</option>';
+                    currentSpace = null; currentPages = [];
+                    document.getElementById('pageListUl').innerHTML = '<li style="color:#999;">无空间</li>';
+                    return;
+                }
+                spaces.forEach(s => {
+                    const o = document.createElement('option');
+                    o.value = s.name;
+                    o.textContent = s.name + '（' + s.page_count + ' 页）';
+                    sel.appendChild(o);
+                });
+                const target = (keepSelect && prev && spaces.some(s => s.name === prev)) ? prev : spaces[0].name;
+                sel.value = target;
+                refreshTypeFilters(spaces.find(s => s.name === target) || spaces[0]);
+                await selectSpace(target);
+            } catch (e) { setMsg(document.getElementById('spaceMsg'), e.message, true); }
+        }
+
+        function refreshTypeFilters(space) {
+            const types = space && space.types ? space.types : ['concept', 'metric', 'faq', 'doc'];
+            for (const selId of ['typeFilter', 'searchType']) {
+                const sel = document.getElementById(selId);
+                sel.innerHTML = '<option value="">' + (selId === 'typeFilter' ? '全部类型' : '全部类型') + '</option>';
+                types.forEach(t => {
+                    const o = document.createElement('option');
+                    o.value = t; o.textContent = t;
+                    sel.appendChild(o);
+                });
+            }
+        }
+
+        async function selectSpace(name) {
+            currentSpace = name;
+            currentPagePath = null;
+            document.getElementById('currentPath').textContent = '未选择页面';
+            document.getElementById('pageContent').value = '';
+            document.getElementById('previewBox').classList.add('hidden');
+            document.getElementById('pageContent').classList.remove('hidden');
+            document.getElementById('btnPreview').textContent = '预览';
+            await loadPages();
+        }
+
+        async function createSpace() {
+            const name = document.getElementById('newSpaceName').value.trim();
+            if (!name) { setMsg(document.getElementById('spaceMsg'), '请输入空间名', true); return; }
+            try {
+                await api('/spaces', { method: 'POST', body: JSON.stringify({ name: name }) });
+                document.getElementById('newSpaceName').value = '';
+                setMsg(document.getElementById('spaceMsg'), '空间创建成功: ' + name, false);
+                await loadSpaces();
+                await loadHealth();
+            } catch (e) { setMsg(document.getElementById('spaceMsg'), e.message, true); }
+        }
+
+        // ---------- 页面 ----------
+        async function loadPages() {
+            const ul = document.getElementById('pageListUl');
+            if (!currentSpace) { ul.innerHTML = '<li style="color:#999;">请先选择空间</li>'; return; }
+            const type = document.getElementById('typeFilter').value;
+            const suffix = type ? '?type=' + encodeURIComponent(type) : '';
+            try {
+                currentPages = await api('/spaces/' + encodeURIComponent(currentSpace) + '/pages' + suffix);
+                ul.innerHTML = '';
+                if (!currentPages.length) {
+                    ul.innerHTML = '<li style="color:#999;">暂无页面（可点右侧"新建页面"）</li>';
+                    return;
+                }
+                currentPages.forEach(p => {
+                    const li = document.createElement('li');
+                    li.innerHTML = '<span class="t">' + esc(p.type) + '</span>' + esc(p.path)
+                        + '<span style="color:#aaa;font-size:11px;margin-left:4px;">(' + (p.chunk_count || 0) + ')</span>';
+                    li.onclick = () => openPage(p.path, li);
+                    if (p.path === currentPagePath) li.classList.add('active');
+                    ul.appendChild(li);
+                });
+            } catch (e) { ul.innerHTML = '<li style="color:#dc3545;">' + esc(e.message) + '</li>'; }
+        }
+
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        }
+
+        async function openPage(path, li) {
+            if (!currentSpace) return;
+            document.querySelectorAll('#pageListUl li').forEach(x => x.classList.remove('active'));
+            if (li) li.classList.add('active');
+            try {
+                const page = await api('/spaces/' + encodeURIComponent(currentSpace)
+                    + '/pages/' + encPath(path));
+                currentPagePath = page.path;
+                document.getElementById('currentPath').textContent = page.path;
+                document.getElementById('pageContent').value = page.content || '';
+                document.getElementById('previewBox').innerHTML = '';
+                document.getElementById('previewBox').classList.add('hidden');
+                document.getElementById('pageContent').classList.remove('hidden');
+                document.getElementById('btnPreview').textContent = '预览';
+                setMsg(document.getElementById('pageMsg'), '', false);
+            } catch (e) { setMsg(document.getElementById('pageMsg'), e.message, true); }
+        }
+
+        function togglePreview() {
+            const ta = document.getElementById('pageContent');
+            const pv = document.getElementById('previewBox');
+            const btn = document.getElementById('btnPreview');
+            const hidden = pv.classList.contains('hidden');
+            if (hidden) {
+                const md = ta.value.replace(/^---[\s\S]*?---\s*/, '');  // 剥离 frontmatter
+                pv.innerHTML = marked.parse(md || '*（空内容）*');
+                pv.classList.remove('hidden');
+                ta.classList.add('hidden');
+                btn.textContent = '编辑';
+            } else {
+                pv.classList.add('hidden');
+                ta.classList.remove('hidden');
+                btn.textContent = '预览';
+            }
+        }
+
+        async function savePage() {
+            if (!currentSpace) return setMsg(document.getElementById('pageMsg'), '请先选择空间', true);
+            const content = document.getElementById('pageContent').value;
+            const msg = document.getElementById('pageMsg');
+            try {
+                if (currentPagePath) {
+                    await api('/spaces/' + encodeURIComponent(currentSpace) + '/pages/'
+                        + encPath(currentPagePath), { method: 'PUT', body: JSON.stringify({ content: content }) });
+                    setMsg(msg, '已保存: ' + currentPagePath, false);
+                } else {
+                    const path = prompt('输入新页面路径（支持子目录，如 concepts/xxx.md）:');
+                    if (!path) return;
+                    await api('/spaces/' + encodeURIComponent(currentSpace) + '/pages',
+                        { method: 'POST', body: JSON.stringify({ path: path, content: content }) });
+                    currentPagePath = path;
+                    document.getElementById('currentPath').textContent = path;
+                    setMsg(msg, '已创建: ' + path, false);
+                }
+                await loadPages();
+                await loadHealth();
+            } catch (e) { setMsg(msg, e.message, true); }
+        }
+
+        function newPage() {
+            currentPagePath = null;
+            document.getElementById('currentPath').textContent = '新建页面（输入内容后点保存）';
+            document.getElementById('pageContent').value =
+                '---\ntitle: \ntype: concept\ntags: []\n---\n';
+            document.getElementById('previewBox').classList.add('hidden');
+            document.getElementById('pageContent').classList.remove('hidden');
+            document.getElementById('btnPreview').textContent = '预览';
+            document.querySelectorAll('#pageListUl li').forEach(x => x.classList.remove('active'));
+            document.getElementById('pageMsg').textContent = '';
+        }
+
+        async function deletePage() {
+            if (!currentPagePath) return;
+            if (!confirm('确认删除页面: ' + currentPagePath + ' ?')) return;
+            const msg = document.getElementById('pageMsg');
+            try {
+                await api('/spaces/' + encodeURIComponent(currentSpace) + '/pages/'
+                    + encPath(currentPagePath), { method: 'DELETE' });
+                setMsg(msg, '已删除: ' + currentPagePath, false);
+                currentPagePath = null;
+                document.getElementById('currentPath').textContent = '未选择页面';
+                document.getElementById('pageContent').value = '';
+                await loadPages();
+                await loadHealth();
+            } catch (e) { setMsg(msg, e.message, true); }
+        }
+
+        // ---------- 检索 ----------
+        async function doSearch() {
+            const box = document.getElementById('searchResult');
+            if (!currentSpace) { box.innerHTML = '<div class="msg err">请先选择空间</div>'; return; }
+            const query = document.getElementById('searchQuery').value.trim();
+            if (!query) { box.innerHTML = '<div class="msg err">请输入问题</div>'; return; }
+            const body = { query: query, top_k: parseInt(document.getElementById('searchTopK').value) || 5 };
+            const type = document.getElementById('searchType').value;
+            if (type) body.filters = { type: type };
+            box.innerHTML = '<div class="msg">检索中…</div>';
+            try {
+                const hits = await api('/spaces/' + encodeURIComponent(currentSpace) + '/search',
+                    { method: 'POST', body: JSON.stringify(body) });
+                if (!hits.length) { box.innerHTML = '<div class="msg">未命中任何知识</div>'; return; }
+                box.innerHTML = '';
+                hits.forEach(h => {
+                    const div = document.createElement('div');
+                    div.className = 'hit';
+                    const badges = (h.hit_channels || '').split('+').filter(Boolean)
+                        .map(c => '<span class="badge ' + c + '">' + c + '</span>').join('');
+                    div.innerHTML = '<div class="hit-title">' + esc(h.title) + badges + '</div>'
+                        + '<div class="hit-meta">' + esc(h.path) + ' · ' + esc(h.type)
+                        + ' · 分 ' + (h.score || 0) + '</div>'
+                        + '<div class="hit-content">' + esc(h.content || '') + '</div>';
+                    div.onclick = () => openPage(h.path);
+                    box.appendChild(div);
+                });
+            } catch (e) { box.innerHTML = '<div class="msg err">' + esc(e.message) + '</div>'; }
+        }
+
+        // ---------- 异步任务轮询通用 ----------
+        function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+        /**
+         * 轮询 llm-wiki 异步任务直至 completed/error。
+         * @returns {Promise<{done:boolean, status:string, task:object, timeout?:boolean, errMsg?:string}>}
+         */
+        async function pollTask(taskId, opts = {}) {
+            const intervalMs = opts.intervalMs || 2000;
+            const timeoutMs = opts.timeoutMs || 10 * 60 * 1000;   // 默认最长 10 分钟
+            const onTick = opts.onTick || null;
+            const started = Date.now();
+            while (true) {
+                const resp = await fetch(API + '/tasks/' + encodeURIComponent(taskId));
+                let body = null;
+                try { body = await resp.json(); } catch (e) { /* 非 JSON，按失败处理 */ }
+                if (body && body.code === 0 && body.data) {
+                    const t = body.data;
+                    if (onTick) onTick(t, Date.now() - started);
+                    if (t.status === 'completed') return { done: true, status: 'completed', task: t };
+                    if (t.status === 'error') {
+                        return { done: true, status: 'error', task: t,
+                            errMsg: t.error || '任务执行失败' };
+                    }
+                    // running（或未知状态）：继续等待
+                } else {
+                    // 任务不存在/后端异常：避免无限空转，视为失败（如确实仍执行可稍后重试）
+                    const m = (body && body.message) || ('查询任务失败(HTTP ' + resp.status + ')');
+                    return { done: true, status: 'error', task: null, errMsg: m };
+                }
+                if (Date.now() - started >= timeoutMs) {
+                    return { done: false, status: 'timeout', task: null };
+                }
+                await sleep(intervalMs);
+            }
+        }
+
+        // ---------- 同步 ----------
+        async function doSync() {
+            const msg = document.getElementById('syncMsg');
+            const rep = document.getElementById('syncReport');
+            if (!currentSpace) { setMsg(msg, '请先选择空间', true); return; }
+            if (msg.dataset.busy === '1') { setMsg(msg, '同步任务执行中，请勿重复发起', true); return; }
+            msg.dataset.busy = '1';
+            rep.innerHTML = '';
+            try {
+                setMsg(msg, '发起同步…', false);
+                const t = await api('/spaces/' + encodeURIComponent(currentSpace) + '/pages/sync',
+                    { method: 'POST' });
+                if (!t || !t.task_id) throw new Error('llm-wiki 未返回 task_id');
+                const taskId = t.task_id;
+                const res = await pollTask(taskId, {
+                    onTick: (cur, elapsed) => {
+                        if (cur.status === 'running' || cur.status === 'queued') {
+                            setMsg(msg, '同步中…（已 ' + Math.round(elapsed / 1000) + ' 秒）', false);
+                        }
+                    }
+                });
+                if (res.done && res.status === 'completed') {
+                    const r = (res.task && res.task.result) || {};
+                    const lines = [];
+                    lines.push('新增: ' + (r.added && r.added.length ? r.added.join(', ') : '无'));
+                    lines.push('更新: ' + (r.updated && r.updated.length ? r.updated.join(', ') : '无'));
+                    lines.push('删除: ' + (r.deleted && r.deleted.length ? r.deleted.join(', ') : '无'));
+                    lines.push('跳过(未变化): ' + (r.skipped || 0));
+                    if (r.errors && r.errors.length) lines.push('错误: ' + r.errors.join('; '));
+                    setMsg(msg, '同步完成', false);
+                    rep.innerHTML = '<pre class="report">' + esc(lines.join('\n')) + '</pre>';
+                    await loadPages();
+                    await loadHealth();
+                } else if (res.done && res.status === 'error') {
+                    setMsg(msg, res.errMsg || '同步任务失败', true);
+                } else {
+                    // 超时仍在后台执行
+                    setMsg(msg, '同步任务仍在后台执行，可稍后刷新页面或重新查询任务状态', false);
+                    rep.innerHTML = '<pre class="report">' + esc('task_id: ' + taskId
+                        + '\n长时间未完成，仍在后台执行中。可稍后刷新页面重试查询。') + '</pre>';
+                }
+            } catch (e) {
+                setMsg(msg, e.message, true);
+            } finally {
+                msg.dataset.busy = '';
+            }
+        }
+
+        // ---------- 导入 ----------
+        /** 调用后端 upload 端点（multipart/form-data），发起异步上传并解析 BaseResponse 包装，返回 {task_id,...} */
+        async function uploadOne(fileName, blob, subdir, overwrite) {
+            const fd = new FormData();
+            fd.append('file', blob, fileName);
+            fd.append('overwrite', overwrite ? 'true' : 'false');
+            fd.append('subdir', subdir || '');
+            const resp = await fetch(API + '/spaces/' + encodeURIComponent(currentSpace)
+                + '/pages/upload', { method: 'POST', body: fd });  // 不手动设 Content-Type，浏览器自动生成 boundary
+            let data;
+            try { data = await resp.json(); } catch (e) { throw new Error('上传请求失败(HTTP ' + resp.status + ')'); }
+            if (data.code !== 0) {
+                const err = new Error(data.message || '上传失败(code=' + data.code + ')');
+                err.code = data.code;
+                throw err;
+            }
+            return data.data;
+        }
+
+        /** 规范化 subdir 前缀：去掉首尾斜杠（如 "concepts/" → "concepts"） */
+        function normalizeSubdir(subdir) {
+            return String(subdir || '').replace(/^\/+|\/+$/g, '');
+        }
+
+        /**
+         * 计算上传文件的 llm-wiki 归一化目标 path：
+         * .md/.markdown → 原文件名；其它扩展名 → 去扩展名 + .md；前缀 subdir。
+         */
+        function targetPathFor(name, subdir) {
+            const base = String(name || '').split('/').pop() || name;   // 防含路径分隔符
+            let fileName;
+            if (/\.(md|markdown)$/i.test(base)) {
+                fileName = base;
+            } else {
+                const dot = base.lastIndexOf('.');
+                fileName = (dot > 0 ? base.slice(0, dot) : base) + '.md';
+            }
+            const sub = normalizeSubdir(subdir);
+            return sub ? sub + '/' + fileName : fileName;
+        }
+
+        /**
+         * 存在性预检：GET 页面详情。只有成功（code=0）才算存在；
+         * 404/其它异常（后端包装为 code!=0 的 BaseResponse）一律视为不存在，继续上传。
+         */
+        async function pageExists(path) {
+            try {
+                const resp = await fetch(API + '/spaces/' + encodeURIComponent(currentSpace)
+                    + '/pages/' + encPath(path));
+                let body = null;
+                try { body = await resp.json(); } catch (e) { /* 非 JSON */ }
+                return !!(body && body.code === 0 && body.data);
+            } catch (e) {
+                return false;
+            }
+        }
+
+        /** 遍历选中文件：存在性预检 → 逐个发起异步上传 → 轮询，汇总 成功/覆盖/跳过(已存在)/失败 清单 */
+        async function importFiles(files) {
+            const msg = document.getElementById('importMsg');
+            const rep = document.getElementById('importReport');
+            if (!currentSpace) { setMsg(msg, '请先选择空间', true); return; }
+            const list = Array.from(files || []);
+            if (!list.length) return;
+            if (msg.dataset.busy === '1') { setMsg(msg, '导入任务执行中，请等待完成后再试', true); return; }
+            msg.dataset.busy = '1';
+            // 归一化 subdir（去掉首尾斜杠），预检与 upload 用同一前缀，保证落库 path 一致
+            const subdir = normalizeSubdir(document.getElementById('importSubdir').value);
+            const total = list.length;
+            const ok = [], overwritten = [], skipped = [], failed = [];
+            try {
+                for (let i = 0; i < total; i++) {
+                    const f = list[i];
+                    // 上传前大小校验：超过 agent-hub 上限(20MB)的文件不可上传，跳过并记入失败清单
+                    if (f.size > MAX_UPLOAD_SIZE) {
+                        failed.push(f.name + ' (' + (f.size / (1024 * 1024)).toFixed(1)
+                            + 'MB 超过 ' + MAX_UPLOAD_SIZE_LABEL + ' 限制，已跳过)');
+                        continue;
+                    }
+                    const targetPath = targetPathFor(f.name, subdir);
+                    // 存在性预检：已存在且不覆盖则跳过
+                    let overwrite = false;
+                    if (await pageExists(targetPath)) {
+                        if (!confirm('页面已存在: ' + targetPath + '，是否覆盖？')) {
+                            skipped.push(f.name + '(已存在)');
+                            continue;
+                        }
+                        overwrite = true;
+                    }
+                    setMsg(msg, '导入中（' + (i + 1) + '/' + total + '）' + f.name
+                        + (overwrite ? '（覆盖）' : '') + '：正在上传…', false);
+                    try {
+                        const blob = new Blob([await f.arrayBuffer()]);
+                        const task = await uploadOne(f.name, blob, subdir, overwrite);
+                        const taskId = task && task.task_id;
+                        if (!taskId) throw new Error('llm-wiki 未返回 task_id');
+                        const fileMsg = f.name;
+                        const res = await pollTask(taskId, {
+                            onTick: (cur, elapsed) => {
+                                if (cur.status === 'running' || cur.status === 'queued') {
+                                    setMsg(msg, '导入中（' + (i + 1) + '/' + total + '）' + fileMsg
+                                        + '：处理中…（已 ' + Math.round(elapsed / 1000) + ' 秒）', false);
+                                }
+                            }
+                        });
+                        if (res.done && res.status === 'completed') {
+                            const p = (res.task && res.task.result && res.task.result.path) || f.name;
+                            if (overwrite) overwritten.push(p); else ok.push(p);
+                        } else if (res.done && res.status === 'error') {
+                            failed.push(f.name + ': ' + (res.errMsg || '任务执行失败'));
+                        } else {
+                            failed.push(f.name + '（任务仍在后台执行，可稍后刷新页面重试查询）');
+                        }
+                    } catch (e) {
+                        failed.push(f.name + ': ' + (e.message || e));
+                    }
+                }
+            } finally {
+                msg.dataset.busy = '';
+            }
+            const lines = ['导入完成：共 ' + total + ' 个文件'];
+            if (ok.length) lines.push('成功: ' + ok.length + ' 个 -> ' + ok.join(', '));
+            if (overwritten.length) lines.push('覆盖: ' + overwritten.length + ' 个 -> ' + overwritten.join(', '));
+            if (skipped.length) lines.push('跳过(已存在): ' + skipped.length + ' 个 -> ' + skipped.join(', '));
+            if (failed.length) lines.push('失败: ' + failed.length + ' 个 -> ' + failed.join('; '));
+            setMsg(msg, '导入完成：成功 ' + ok.length + '，覆盖 ' + overwritten.length
+                + '，跳过 ' + skipped.length + '，失败 ' + failed.length, false);
+            rep.innerHTML = '<pre class="report">' + esc(lines.join('\n')) + '</pre>';
+            await loadPages();
+            await loadHealth();
+        }
+
+        // ---------- 初始化 ----------
+        document.getElementById('spaceSelect').onchange = e => selectSpace(e.target.value);
+        document.getElementById('searchQuery').addEventListener('keydown', e => {
+            if (e.key === 'Enter') doSearch();
+        });
+        loadHealth();
+        loadSpaces();
+    </script>
+</body>
+</html>

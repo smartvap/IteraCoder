@@ -45,6 +45,8 @@ build/
 ### Playwright MCP 缓存 ###
 .playwright-mcp/
 
+.aspirecode/
+
 ### 日志文件 ###
 *.log
 logs/
