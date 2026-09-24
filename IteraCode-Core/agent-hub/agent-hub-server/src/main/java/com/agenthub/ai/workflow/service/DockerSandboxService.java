@@ -417,12 +417,12 @@ public class DockerSandboxService {
     }
 
     private void buildSandboxImage(DockerClient client) throws Exception {
-        buildImageFromDockerfile(client, imageName, "docker/sandbox/Dockerfile");
+        buildImageFromDockerfile(client, imageName, "docker/workflow/sandbox/Dockerfile");
     }
 
     /** 使用内置 Dockerfile 构建 DinD 镜像（镜像层禁用 TLS） */
     private void buildDindImage(DockerClient client) throws Exception {
-        buildImageFromDockerfile(client, dindImage, "docker/dind/Dockerfile");
+        buildImageFromDockerfile(client, dindImage, "docker/workflow/dind/Dockerfile");
     }
 
     /**

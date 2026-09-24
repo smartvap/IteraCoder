@@ -31,7 +31,7 @@ spring:
   sql:
     init:
       mode: always
-      schema-locations: classpath:sql/init-h2.sql
+      schema-locations: classpath:sql/base/init-h2.sql
   h2:
     console:
       enabled: false

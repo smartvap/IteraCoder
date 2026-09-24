@@ -27,8 +27,8 @@ agenthub:
     code-storage-path: "D:\\agenthub-codegen"  # 本地目录，不配或为空时默认项目根目录/temp
     git:
       enabled: true                          # 是否将项目代码推送到远程 Git 仓库
-      remote-url: http://192.168.46.143:3000       # Git 服务地址（Gitea/GitLab）
-      api-base-url: http://192.168.46.143:3000/api/v1  # API 地址（Gitea: /api/v1, GitLab: /api/v4）
+      remote-url: http://192.168.46.147:3000       # Git 服务地址（Gitea/GitLab）
+      api-base-url: http://192.168.46.147:3000/api/v1  # API 地址（Gitea: /api/v1, GitLab: /api/v4）
       token: "${GIT_TOKEN}"                  # API Token（环境变量优先，避免硬编码）
       repo-owner: agent-hub                    # 仓库所属组织/用户
       username: agent                      # 提交者姓名

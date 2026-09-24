@@ -1,0 +1,1881 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多数据源注册表管理</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', Arial, sans-serif;
+               background: #f5f6fa; color: #333; padding: 20px; }
+        .container { max-width: 1280px; margin: 0 auto; }
+        h1 { font-size: 20px; color: #1a1a2e; margin-bottom: 4px; }
+        .subtitle { color: #888; font-size: 13px; margin-bottom: 16px; }
+        .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+                padding: 16px 20px; margin-bottom: 16px; }
+        .card h2 { font-size: 15px; color: #333; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
+        .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+        .filter-label { font-size: 13px; color: #666; }
+        label.fld { display: block; font-size: 12px; color: #555; margin-bottom: 4px; }
+        input[type=text], input[type=password], input[type=number], select, textarea {
+            padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+            background: #fff; color: #333; }
+        textarea { resize: vertical; font-family: Consolas, Monaco, monospace; }
+        input:disabled, textarea:disabled, select:disabled { background: #f3f3f3; color: #999; }
+        button { padding: 6px 14px; font-size: 13px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { opacity: .9; }
+        .btn-primary { background: #007bff; color: #fff; }
+        .btn-primary:disabled { background: #9cc3f5; cursor: not-allowed; }
+        .btn-gray { background: #6c757d; color: #fff; }
+        .btn-danger { background: #dc3545; color: #fff; }
+        .btn-orange { background: #fd7e14; color: #fff; }
+        .btn-green { background: #28a745; color: #fff; }
+        .btn-small { padding: 3px 9px; font-size: 12px; margin: 2px 3px 2px 0; }
+        .toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+        .msg { margin: 6px 0; font-size: 13px; color: #555; white-space: pre-wrap; }
+        .msg.ok { color: #28a745; }
+        .msg.err { color: #dc3545; }
+        #topMsg { display: none; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px; }
+        #topMsg.ok { display: block; background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+        #topMsg.err { display: block; background: #fce4ec; color: #c62828; border: 1px solid #f8bbd0; }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; min-width: 1180px; }
+        th { background: #f0f2f5; padding: 10px 12px; text-align: left; font-size: 13px; font-weight: 600;
+             color: #555; border-bottom: 2px solid #e0e0e0; white-space: nowrap; }
+        td { padding: 9px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+        tr:hover td { background: #f8f9ff; }
+        .mono { font-family: Consolas, Monaco, monospace; font-size: 12px; }
+        .muted { color: #999; }
+        .empty { text-align: center; padding: 36px; color: #999; font-size: 13px; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+        .badge-green { background: #e8f5e9; color: #2e7d32; }
+        .badge-orange { background: #fff3e0; color: #e65100; }
+        .badge-red { background: #fce4ec; color: #c62828; }
+        .badge-gray { background: #eceff1; color: #616161; }
+        .badge-blue { background: #e3f2fd; color: #1565c0; }
+        .pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px;
+                       padding: 12px 0 0; font-size: 13px; color: #555; }
+        .pagination button { padding: 5px 12px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; font-size: 13px; }
+        .pagination button:disabled { color: #ccc; cursor: default; background: #f8f8f8; }
+        .pagination .page-info { font-weight: 600; color: #0d6efd; }
+        /* 弹窗 */
+        .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex;
+                      align-items: flex-start; justify-content: center; z-index: 1000; padding: 34px 12px; overflow: auto; }
+        .modal { background: #fff; border-radius: 8px; width: 760px; max-width: 100%; box-shadow: 0 4px 20px rgba(0,0,0,.2);
+                 display: flex; flex-direction: column; max-height: calc(100vh - 68px); }
+        .modal.small { width: 600px; }
+        .modal.large { width: 980px; }
+        .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px;
+                      border-bottom: 1px solid #eee; }
+        .modal-head h3 { font-size: 15px; color: #1a1a2e; }
+        .modal-close { background: transparent; border: none; font-size: 20px; color: #999; cursor: pointer; line-height: 1; padding: 2px 6px; }
+        .modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+        .modal-foot { padding: 12px 20px; border-top: 1px solid #eee; text-align: right; }
+        .hidden { display: none !important; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+        .form-grid .full { grid-column: 1 / -1; }
+        .form-grid .fld input, .form-grid .fld select, .form-grid .fld textarea { width: 100%; }
+        .field-hint { font-size: 11px; color: #999; margin-top: 3px; line-height: 1.5; }
+        .wl-mode-group { margin: 2px 0 8px; }
+        .wl-mode-opt { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; color: #333;
+                       margin-bottom: 5px; cursor: pointer; line-height: 1.5; }
+        /* radio 固定固有宽度，覆盖 .form-grid .fld input 的 width:100% 拉伸（特异性 (0,3,1) > (0,2,1)）；
+           文字多行时用 flex-start + margin-top 使 radio 与首行顶部对齐，避免垂直居中挤压 */
+        .form-grid .fld .wl-mode-opt input { width: auto; margin: 2px 0 0; flex: 0 0 auto; }
+        /* 加固：超长标签文字可断行，避免横向溢出弹窗 */
+        .wl-mode-group label { overflow-wrap: anywhere; }
+        .field-note { font-size: 12px; margin-top: 4px; }
+        .note-warn { color: #e65100; }
+        .note-ok { color: #2e7d32; }
+        .test-box { border: 1px dashed #c0d7f5; background: #f6faff; border-radius: 6px; padding: 12px 14px; margin-top: 12px; }
+        .test-box .test-title { font-size: 13px; font-weight: 600; color: #333; margin-bottom: 8px; }
+        .diag-item { display: flex; justify-content: space-between; padding: 4px 2px; font-size: 13px;
+                     border-bottom: 1px dashed #f0f0f0; }
+        .diag-item:last-child { border-bottom: none; }
+        .ok-sym { color: #28a745; font-weight: 600; }
+        .fail-sym { color: #dc3545; font-weight: 600; }
+        .json-cell { background: #f6f8fa; border-radius: 4px; padding: 8px; font-size: 12px; white-space: pre-wrap;
+                     word-break: break-all; max-height: 260px; overflow-y: auto; }
+        pre.report { background: #f6f8fa; border-radius: 4px; padding: 10px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+        .link-btn { background: none; border: none; color: #007bff; cursor: pointer; font-size: 12px; padding: 0; text-decoration: underline; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>多数据源注册表管理</h1>
+    <div class="subtitle">数据源登记 · 健康检查 · 启停 · 审计 · llm-wiki 知识空间联动</div>
+    <div id="topMsg"></div>
+
+    <!-- 筛选栏 -->
+    <div class="card">
+        <h2>查询条件</h2>
+        <div class="row">
+            <div>
+                <label class="fld" for="selState">管理状态</label>
+                <select id="selState" style="min-width:120px;">
+                    <option value="">全部</option>
+                    <option value="DRAFT">草稿</option>
+                    <option value="ACTIVE">启用</option>
+                    <option value="DISABLED">停用</option>
+                </select>
+            </div>
+            <div>
+                <label class="fld" for="selDbType">库类型</label>
+                <select id="selDbType" style="min-width:140px;"><option value="">全部</option></select>
+            </div>
+            <div>
+                <label class="fld" for="inpSystem">归属系统</label>
+                <input type="text" id="inpSystem" placeholder="如 CRM / OA" style="width:140px;">
+            </div>
+            <div>
+                <label class="fld" for="inpKeyword">关键字</label>
+                <input type="text" id="inpKeyword" placeholder="名称 / ds_id 模糊搜索" style="width:220px;">
+            </div>
+            <div style="align-self:flex-end;">
+                <button class="btn-primary" onclick="search(1)">查询</button>
+                <button class="btn-gray" onclick="resetFilter()">重置</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 列表 -->
+    <div class="card">
+        <div class="toolbar">
+            <h2 style="margin:0;padding:0;border:none;">数据源列表</h2>
+            <button class="btn-primary" onclick="openRegister()">＋ 新增数据源</button>
+        </div>
+        <div class="table-wrap" style="margin-top:12px;">
+            <table>
+                <thead>
+                <tr>
+                    <th style="width:150px;">名称</th>
+                    <th style="width:110px;">ds_id</th>
+                    <th style="width:80px;">系统</th>
+                    <th style="width:120px;">库类型</th>
+                    <th style="width:150px;">知识空间</th>
+                    <th style="width:90px;">管理状态</th>
+                    <th style="width:110px;">健康状态</th>
+                    <th style="width:100px;">最近检查</th>
+                    <th style="min-width:300px;">操作</th>
+                </tr>
+                </thead>
+                <tbody id="dsTbody">
+                <tr><td colspan="9" class="empty">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="pagination" id="dsPage"></div>
+    </div>
+</div>
+
+<!-- 空间候选 datalist（表单 + 空间绑定共用） -->
+<datalist id="spaceDl"></datalist>
+
+<!-- ============ 注册 / 编辑弹窗 ============ -->
+<div class="modal-mask hidden" id="formModal">
+    <div class="modal large">
+        <div class="modal-head">
+            <h3 id="formTitle">新增数据源</h3>
+            <button class="modal-close" onclick="closeForm()" title="关闭">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="msg err hidden" id="formErr"></div>
+            <div class="form-grid">
+                <div class="fld">
+                    <label>ds_id（标识，注册后不可变更）</label>
+                    <input type="text" id="f_dsId" placeholder="如 oa-mysql，^[a-z0-9][a-z0-9-_]*$" autocomplete="off">
+                </div>
+                <div class="fld">
+                    <label>名称（必填）</label>
+                    <input type="text" id="f_dsName" placeholder="如 OA 系统库" autocomplete="off">
+                </div>
+                <div class="fld">
+                    <label>归属系统</label>
+                    <input type="text" id="f_systemCode" placeholder="如 CRM / OA（可选）" autocomplete="off">
+                </div>
+                <div class="fld">
+                    <label>库类型（必填）</label>
+                    <select id="f_dbType" onchange="updateDbTypeHint()"></select>
+                    <div class="field-hint" id="dbTypeHint"></div>
+                </div>
+                <div class="fld full">
+                    <label>JDBC URL（必填，禁内嵌账密）</label>
+                    <input type="text" id="f_jdbcUrl" placeholder="jdbc:mysql://${DBACCESS_OA_HOST}:3306/${DBACCESS_OA_DB}?useSSL=false" autocomplete="off">
+                    <div class="field-hint">支持 ${ENV} 引用，禁止 user:pass@ 内嵌账密。</div>
+                </div>
+                <div class="fld">
+                    <label>只读账号（必填）</label>
+                    <!-- rca1.9.0.0 功能点 1：只读账号示例提示对齐 OceanBase @租户 口径（仅展示文案，id/提交字段/校验逻辑零变更）；
+                         定稿措辞与 rca1.8.0.0 后端校验文案保持一致，且不得出现真实账号/库名/host 示例 -->
+                    <input type="text" id="f_readonlyUser" placeholder="用户名@租户（租户名需与目标租户一致）" autocomplete="off">
+                    <div class="field-hint">支持 ${ENV} 引用；OceanBase 只读账号需形如 用户名@租户（租户名需与目标租户一致）。</div>
+                </div>
+                <div class="fld">
+                    <label>密码引用 readonlyPasswordRef（必填 ${ENV}）</label>
+                    <input type="text" id="f_passwordRef" placeholder="${DBACCESS_OA_READONLY_PWD}" autocomplete="off">
+                    <div class="field-hint">仅允许 ${ENV} 引用，明文密码禁止填写/回显。</div>
+                </div>
+                <div class="fld">
+                    <label>属主组</label>
+                    <input type="text" id="f_ownerGroup" placeholder="如 data-ops（可选）" autocomplete="off">
+                </div>
+                <div class="fld">
+                    <label>知识空间（llm-wiki）</label>
+                    <input type="text" id="f_spaceName" list="spaceDl" placeholder="选择候选或手动输入，可空" autocomplete="off">
+                    <div id="formSpaceNote"></div>
+                </div>
+                <div class="fld full">
+                    <label style="display:inline-block; vertical-align:middle; margin-bottom:0;">
+                        <input type="checkbox" id="f_autoCreate" style="vertical-align:middle; width:auto;"> 自动创建 / 确认知识空间（勾选且空间名为空时注册将按 ds_id 自动命名）
+                    </label>
+                </div>
+                <div class="fld full">
+                    <label>可访问库（库名 / schema，可多个）</label>
+                    <textarea id="f_spaceNames" rows="2" placeholder="每行一个库名，可整段粘贴换行分隔；如&#10;CRM_A&#10;CRM_B"></textarea>
+                    <div class="field-hint">每行一个纯库名 / Owner（不含点号）：MySQL、OceanBase-MySQL 填 database 名；Oracle、OceanBase-Oracle 填 schema/Owner 名（大写）。留空时使用知识空间对应库/连接默认库；多个库时 SQL 可跨库查询。</div>
+                    <!-- rca1.8.0.0 功能点 3：连接串默认库 ↔ 可访问库集合一致性提示位（仅提示，非阻断） -->
+                    <div id="jdbcSchemaNote"></div>
+                </div>
+                <div class="fld full">
+                    <label>数据表访问范围</label>
+                    <div class="wl-mode-group">
+                        <label class="wl-mode-opt"><input type="radio" name="wlMode" id="wlMode_all" value="ALL" checked onchange="syncWlUi()"> 全部表可访问（推荐；大数据量系统免配置）</label>
+                        <label class="wl-mode-opt"><input type="radio" name="wlMode" id="wlMode_deny" value="DENY_ONLY" onchange="syncWlUi()"> 仅禁止下列表（黑名单，其余都可访问）</label>
+                        <label class="wl-mode-opt"><input type="radio" name="wlMode" id="wlMode_allow" value="ALLOW_ONLY" onchange="syncWlUi()"> 仅允许下列表（白名单，其余拒绝）</label>
+                    </div>
+                    <textarea id="f_wlTables" rows="4" placeholder="每行一个表名，可含通配符 * 或 %，例如：&#10;CRM_*&#10;*_LOG&#10;OA_USER"></textarea>
+                    <div class="field-hint" id="wlTablesHint">每行一个表名，可整段粘贴换行分隔；支持通配符 * 或 %。「仅禁止」清单为空 = 全部放行；「仅允许」清单为空 = 全部拒绝。</div>
+                    <div class="field-hint">不配置 = 全部表可访问（依赖数据库只读账号与敏感字段保护）。</div>
+                </div>
+                <div class="fld full">
+                    <label>资源限制（JSON，可空）</label>
+                    <textarea id="f_limits" rows="2" placeholder='{"maxRows":500,"maxSeconds":5,"sensitivePolicy":"DENY","allowSelectStar":false}'></textarea>
+                </div>
+                <div class="fld full">
+                    <label>备注</label>
+                    <textarea id="f_remark" rows="2" placeholder="备注（可选）"></textarea>
+                </div>
+            </div>
+
+            <!-- 测试连接（表单内联） -->
+            <div class="test-box">
+                <div class="test-title">测试连接（可选，POST /test-connection 一次性凭据）</div>
+                <div class="row">
+                    <input type="text" id="f_passwordTest" placeholder="一次性测试密码或 ${ENV} 引用（如 ${LOCAL_MYSQL_PWD}）" autocomplete="off" style="flex:1;min-width:220px;">
+                    <button class="btn-orange" id="btnTestForm" onclick="testFromForm()">测试连接</button>
+                </div>
+                <div class="msg hidden" id="formTestMsg"></div>
+                <div id="formTestResult" class="hidden"></div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-gray" onclick="closeForm()" style="margin-right:8px;">取消</button>
+            <button class="btn-primary" id="btnSaveForm" onclick="saveForm()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ 行内测试连接弹窗（已有数据源） ============ -->
+<div class="modal-mask hidden" id="testModal">
+    <div class="modal">
+        <div class="modal-head">
+            <h3>测试连接（数据源：<span class="mono" id="rt_title"></span>）</h3>
+            <button class="modal-close" onclick="closeTest()" title="关闭">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="diag-item"><span class="muted">库类型</span><span class="mono" id="rt_dbType"></span></div>
+            <div class="diag-item"><span class="muted">JDBC URL</span><span class="mono" id="rt_jdbcUrl"></span></div>
+            <div class="diag-item"><span class="muted">只读账号</span><span class="mono" id="rt_readonlyUser"></span></div>
+            <div style="margin:12px 0;">
+                <label class="fld" for="rt_password">一次性测试密码或 ${ENV} 引用（如 ${LOCAL_MYSQL_PWD}；必须输入）</label>
+                <input type="text" id="rt_password" autocomplete="off" style="width:100%;">
+            </div>
+            <button class="btn-orange" id="btnRunRowTest" onclick="runRowTest()">开始测试</button>
+            <div id="rowTestResult"></div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-gray" onclick="closeTest()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ 健康诊断详情弹窗 ============ -->
+<div class="modal-mask hidden" id="healthDetailModal">
+    <div class="modal small">
+        <div class="modal-head">
+            <h3 id="hdTitle">健康诊断</h3>
+            <button class="modal-close" onclick="closeHealthDetail()" title="关闭">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="hdBody"></div>
+            <div style="text-align:right; margin-top:10px;">
+                <button class="btn-small btn-gray hidden" id="btnHdHistory" onclick="openHealthLogs(hdDsId, '')">查看健康历史</button>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-gray" onclick="closeHealthDetail()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ 健康历史弹窗 ============ -->
+<div class="modal-mask hidden" id="healthLogModal">
+    <div class="modal large">
+        <div class="modal-head">
+            <h3>健康检查历史（<span class="mono" id="hlDsIdTxt"></span>）</h3>
+            <button class="modal-close" onclick="closeHealthLogs()" title="关闭">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="row" style="margin-bottom:10px;">
+                <label class="filter-label" for="selHlType">类型</label>
+                <select id="selHlType" style="min-width:130px;" onchange="openHealthLogs(hlDsId, this.value)">
+                    <option value="">全部</option>
+                    <option value="HEALTH_CHECK">健康检查</option>
+                    <option value="TEST_CONNECTION">测试连接</option>
+                </select>
+            </div>
+            <div class="table-wrap">
+                <table style="min-width:900px;">
+                    <thead>
+                    <tr>
+                        <th style="width:150px;">时间</th>
+                        <th style="width:100px;">类型</th>
+                        <th style="width:90px;">结果</th>
+                        <th style="width:130px;">方言</th>
+                        <th style="width:180px;">连通/只读/字典/白名单</th>
+                        <th style="width:70px;">耗时</th>
+                        <th>失败项 / 原因（脱敏）</th>
+                    </tr>
+                    </thead>
+                    <tbody id="hlTbody"><tr><td colspan="7" class="empty">加载中...</td></tr></tbody>
+                </table>
+            </div>
+            <div class="pagination" id="hlPage"></div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-gray" onclick="closeHealthLogs()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ 审计记录弹窗 ============ -->
+<div class="modal-mask hidden" id="auditModal">
+    <div class="modal large">
+        <div class="modal-head">
+            <h3>审计记录（<span class="mono" id="auDsIdTxt"></span>）</h3>
+            <button class="modal-close" onclick="closeAudit()" title="关闭">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="row" style="margin-bottom:10px;">
+                <label class="filter-label" for="selAction">动作</label>
+                <select id="selAction" style="min-width:130px;" onchange="openAudit(auditDsId, this.value)">
+                    <option value="">全部</option>
+                    <option value="REGISTER">注册</option>
+                    <option value="UPDATE">修改</option>
+                    <option value="ENABLE">启用</option>
+                    <option value="DISABLE">停用</option>
+                    <option value="DELETE">删除</option>
+                    <option value="TEST_CONNECTION">测试连接</option>
+                    <option value="HEALTH_CHECK">健康检查</option>
+                    <option value="SPACE_BIND">空间绑定</option>
+                </select>
+            </div>
+            <div class="table-wrap">
+                <table style="min-width:940px;">
+                    <thead>
+                    <tr>
+                        <th style="width:150px;">时间</th>
+                        <th style="width:90px;">动作</th>
+                        <th style="width:90px;">操作人</th>
+                        <th style="width:80px;">结果</th>
+                        <th style="width:170px;">摘要</th>
+                        <th>变更明细（脱敏）</th>
+                    </tr>
+                    </thead>
+                    <tbody id="auTbody"><tr><td colspan="6" class="empty">加载中...</td></tr></tbody>
+                </table>
+            </div>
+            <div class="pagination" id="auPage"></div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-gray" onclick="closeAudit()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ 空间绑定弹窗 ============ -->
+<div class="modal-mask hidden" id="spaceModal">
+    <div class="modal">
+        <div class="modal-head">
+            <h3>知识空间绑定 / 重试（<span class="mono" id="spDsIdTxt"></span>）</h3>
+            <button class="modal-close" onclick="closeSpace()" title="关闭">&times;</button>
+        </div>
+        <div class="modal-body">
+            <label class="fld" for="spName">目标空间名（选择 llm-wiki 候选或手动输入）</label>
+            <input type="text" id="spName" list="spaceDl" autocomplete="off" style="width:100%;">
+            <div id="spNote"></div>
+            <div style="margin:10px 0;">
+                <label style="display:inline-block;">
+                    <input type="checkbox" id="spAutoCreate" checked> 空间不存在时自动创建
+                </label>
+            </div>
+            <div class="msg hidden" id="spMsg"></div>
+            <div id="spResult" class="hidden"></div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-gray" onclick="closeSpace()" style="margin-right:8px;">取消</button>
+            <button class="btn-primary" onclick="bindSpace()">绑定 / 重试</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ 运维概况弹窗 ============ -->
+<div class="modal-mask hidden" id="opsModal">
+    <div class="modal small">
+        <div class="modal-head">
+            <h3>运维概况（<span class="mono" id="opsDsIdTxt"></span>）</h3>
+            <button class="modal-close" onclick="closeOps()" title="关闭">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="opsBody">加载中...</div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-gray" onclick="closeOps()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ 采集调度配置弹窗（KB 自动维护） ============ -->
+<div class="modal-mask hidden" id="scheduleModal">
+    <div class="modal small">
+        <div class="modal-head">
+            <h3>采集调度配置（<span class="mono" id="schDsId"></span>）</h3>
+            <button class="modal-close" onclick="hideModal('scheduleModal')" title="关闭">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="msg hidden" id="schMsg"></div>
+            <label class="fld" for="schCron">采集 cron（Spring 6 段表达式：秒 分 时 日 月 周）</label>
+            <input type="text" id="schCron" maxlength="64" autocomplete="off" placeholder="0 * * * * ?（每 60 秒）" style="width:100%;">
+            <div class="field-hint">示例：0 * * * * ?（每 60 秒）、0 0/5 * * * ?（每 5 分钟）、0 0 * * * ?（每小时）、0 0 2 * * ?（每天 02:00）；留空保存表示清除自定义、回落默认表达式。</div>
+            <div class="field-hint" id="schNote"></div>
+            <div style="margin-top:10px;">
+                <div class="diag-item"><span class="muted">采集类型</span><span class="mono" id="schTaskType">-</span></div>
+                <div class="diag-item"><span class="muted">任务ID</span><span id="schTaskId">-</span></div>
+                <div class="diag-item"><span class="muted">生效表达式</span><span class="mono" id="schEffCron">-</span></div>
+                <div class="diag-item"><span class="muted">默认表达式</span><span class="mono" id="schDefCron">-</span></div>
+                <div class="diag-item"><span class="muted">下次运行时间</span><span id="schNextRun">-</span></div>
+                <div class="diag-item"><span class="muted">任务状态</span><span id="schStatus">-</span></div>
+                <div class="diag-item"><span class="muted">累计运行次数</span><span id="schRunCount">-</span></div>
+                <div class="diag-item"><span class="muted">最近运行时间</span><span id="schLastRun">-</span></div>
+                <div class="diag-item"><span class="muted">是否已登记</span><span id="schRegistered">-</span></div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-gray" onclick="hideModal('scheduleModal')" style="margin-right:8px;">关闭</button>
+            <button class="btn-primary" id="btnSaveSchedule" onclick="saveSchedule()">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==================== 全局配置 ====================
+    const API_BASE = '/api/v1/datasource';
+    // KB 自动维护（采集调度）接口前缀：独立常量，避免与数据源接口混淆（既有 API_BASE 保持不变）
+    const KB_API_BASE = '/api/v1/kb-crawler';
+    // 默认调度表达式（仅用于弹窗提示文案；真实默认值以后端返回的 effectiveCron/defaultCron 为准）
+    const SCHEDULE_DEFAULT_CRON_HINT = '0 * * * * ?';
+    const ENV_REF_RE = /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/;
+    const MANAGE_META = {
+        DRAFT:     { label: '草稿',   cls: 'gray' },
+        ACTIVE:    { label: '启用',   cls: 'green' },
+        DISABLED:  { label: '停用',   cls: 'orange' },
+        DELETED:   { label: '已删除', cls: 'gray' }
+    };
+    const HEALTH_META = {
+        UNCHECKED: { label: '未检查', cls: 'gray' },
+        PASS:      { label: '健康',   cls: 'green' },
+        PARTIAL:   { label: '部分通过', cls: 'orange' },
+        FAIL:      { label: '异常',   cls: 'red' }
+    };
+    const BIND_META = {
+        NOT_APPLIED: { label: '未申请', cls: 'gray' },
+        BOUND:       { label: '已绑定', cls: 'green' },
+        BIND_PENDING:{ label: '待绑定', cls: 'orange' },
+        BIND_FAILED: { label: '绑定失败', cls: 'red' }
+    };
+    const ACTION_LABEL = {
+        REGISTER: '注册', UPDATE: '修改', ENABLE: '启用', DISABLE: '停用',
+        DELETE: '删除', TEST_CONNECTION: '测试连接', HEALTH_CHECK: '健康检查', SPACE_BIND: '空间绑定'
+    };
+    const CHECK_LABEL = { TEST_CONNECTION: '测试连接', HEALTH_CHECK: '健康检查' };
+
+    let currentPage = 1;
+    let pageSize = 10;
+    let totalRecords = 0;
+    let totalPages = 1;
+    let dbTypes = [];          // [{dbType,label,providerReady}]
+    // 空间候选：新增 boundDsCount/boundDsList/shareStatus/reuseRecommended，旧字段 available/boundDs 保留兼容
+    let spaceOptions = [];
+    let currentRecords = [];   // 当前页列表行
+
+    // 编辑表单上下文
+    let formMode = 'register'; // register | edit
+    let editingDsId = null;
+    let formVersion = null;
+    // 编辑态原白名单（用于回填 UI 与保留列级限制；register 态为 null）
+    let editingWhitelist = null;
+
+    // 弹窗上下文
+    let rowTestDsId = null;
+    let hdDsId = null;
+    let hlDsId = null, hlPage = 1, hlType = '';
+    let auditDsId = null, auPage = 1, auAction = '';
+    let bindDsId = null;
+
+    // ==================== 通用工具 ====================
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    function fmtTime(t) {
+        if (t == null || t === '') return '';
+        let d;
+        if (typeof t === 'number') d = new Date(t);
+        else if (/^\d{13}$/.test(String(t))) d = new Date(Number(t));
+        else if (/^\d{10}$/.test(String(t))) d = new Date(Number(t) * 1000);
+        else d = new Date(String(t).replace(' ', 'T'));
+        if (isNaN(d.getTime())) return String(t);
+        const p = n => (n < 10 ? '0' + n : '' + n);
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+            + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    }
+
+    /** 展示层兜底脱敏：剥离可能出现的明文凭据（后端已脱敏，此处双保险） */
+    function safeMsg(m) {
+        let s = String(m == null ? '' : m);
+        s = s.replace(/(password|pwd|passwd|token|api[_-]?key|secret)=([^&\s;]*)/gi, '$1=***');
+        s = s.replace(/(\/\/[^@\s/]{1,64}:)[^@\s/]+@/g, '$1***@');
+        return s || '操作失败，请稍后重试';
+    }
+
+    function dbTypeLabel(code) {
+        const hit = dbTypes.find(t => t.dbType === code);
+        return hit ? hit.label : (code || '-');
+    }
+
+    /**
+     * 各库类型的驱动类与 JDBC URL 前缀示例（仅用于表单提示，不参与提交，保持既有字段结构不变）。
+     * OCEANBASE_MYSQL 的驱动留空即可：由后端按 jdbcUrl 前缀路由（jdbc:oceanbase:→OB 驱动，jdbc:mysql:→mysql 驱动），
+     * 以保护存量 jdbc:mysql: 连接串仍走 mysql-connector。
+     */
+    const DB_TYPE_HINTS = {
+        MYSQL: {
+            driver: 'com.mysql.cj.jdbc.Driver',
+            prefix: 'jdbc:mysql:',
+            example: 'jdbc:mysql://host:3306/db'
+        },
+        OCEANBASE_MYSQL: {
+            driver: '留空（自动按 URL 前缀路由：jdbc:oceanbase:→com.oceanbase.jdbc.Driver；jdbc:mysql:→com.mysql.cj.jdbc.Driver）',
+            prefix: 'jdbc:oceanbase:',
+            example: 'jdbc:oceanbase://host:2883/db'
+        },
+        ORACLE: {
+            driver: 'oracle.jdbc.OracleDriver',
+            prefix: 'jdbc:oracle:',
+            example: 'jdbc:oracle:thin:@host:1521/ORCL'
+        },
+        OCEANBASE_ORACLE: {
+            driver: 'com.oceanbase.jdbc.Driver',
+            prefix: 'jdbc:oceanbase:',
+            example: 'jdbc:oceanbase://host:2883/db'
+        }
+    };
+
+    /** 按当前所选 dbType 刷新「驱动类 / URL 前缀示例」提示（纯展示，不改写输入值与提交字段） */
+    function updateDbTypeHint() {
+        const el = document.getElementById('dbTypeHint');
+        if (!el) return;
+        const code = document.getElementById('f_dbType').value;
+        const h = DB_TYPE_HINTS[code];
+        if (!h) {
+            el.textContent = '选择库类型后显示对应的驱动类与 JDBC URL 前缀示例。';
+            return;
+        }
+        el.textContent = '驱动类：' + h.driver + '；URL 前缀：' + h.prefix + '，示例 ' + h.example;
+    }
+
+    // ==================== 请求封装 ====================
+    async function request(path, options) {
+        const opts = Object.assign({ headers: { 'Content-Type': 'application/json' } }, options || {});
+        const resp = await fetch(API_BASE + path, opts);
+        let data = null;
+        try { data = await resp.json(); } catch (e) { throw new Error('请求失败（HTTP ' + resp.status + '）'); }
+        if (data.code !== 0) {
+            const err = new Error(safeMsg(data.message));
+            err.code = data.code;
+            err.data = data.data;
+            throw err;
+        }
+        return data.data;
+    }
+
+    function toast(text, ok) {
+        const el = document.getElementById('topMsg');
+        el.textContent = text;
+        el.className = ok ? 'ok' : 'err';
+        clearTimeout(toast._t);
+        toast._t = setTimeout(() => { el.className = 'hidden'; el.textContent = ''; }, 5000);
+    }
+
+    /** 按钮 loading 防重复提交 */
+    function busy(btn, on, label) {
+        if (!btn) return;
+        if (on) {
+            btn.dataset.txt = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '处理中…';
+        } else {
+            btn.disabled = false;
+            btn.textContent = btn.dataset.txt || label || '确定';
+        }
+    }
+
+    function showModal(id) { document.getElementById(id).classList.remove('hidden'); }
+    function hideModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+    // ==================== 列表 ====================
+    function buildFilterParams(page) {
+        const p = new URLSearchParams();
+        p.set('page', page);
+        p.set('pageSize', pageSize);
+        const st = document.getElementById('selState').value;
+        const sys = document.getElementById('inpSystem').value.trim();
+        const dt = document.getElementById('selDbType').value;
+        const kw = document.getElementById('inpKeyword').value.trim();
+        if (st) p.set('manageState', st);
+        if (sys) p.set('systemCode', sys);
+        if (dt) p.set('dbType', dt);
+        if (kw) p.set('keyword', kw);
+        return p;
+    }
+
+    function search(page) {
+        currentPage = page || 1;
+        const params = buildFilterParams(currentPage);
+        const tbody = document.getElementById('dsTbody');
+        tbody.innerHTML = '<tr><td colspan="9" class="empty">加载中...</td></tr>';
+        request('/page?' + params.toString())
+            .then(data => renderRows(data))
+            .catch(e => {
+                tbody.innerHTML = '<tr><td colspan="9" class="empty">查询失败：' + esc(e.message) + '</td></tr>';
+            });
+    }
+
+    function resetFilter() {
+        document.getElementById('selState').value = '';
+        document.getElementById('selDbType').value = '';
+        document.getElementById('inpSystem').value = '';
+        document.getElementById('inpKeyword').value = '';
+        search(1);
+    }
+
+    function stateBadge(state) {
+        const meta = MANAGE_META[state] || { label: state || '-', cls: 'gray' };
+        return '<span class="badge badge-' + meta.cls + '">' + esc(meta.label) + '</span>';
+    }
+
+    function healthBadge(state) {
+        const s = state || 'UNCHECKED';
+        const meta = HEALTH_META[s] || { label: s, cls: 'gray' };
+        return '<span class="badge badge-' + meta.cls + '">' + esc(meta.label) + '</span>';
+    }
+
+    function bindBadge(state) {
+        const meta = BIND_META[state] || { label: state || '-', cls: 'gray' };
+        return '<span class="badge badge-' + meta.cls + '">' + esc(meta.label) + '</span>';
+    }
+
+    function renderRows(data) {
+        const tbody = document.getElementById('dsTbody');
+        const records = (data && data.records) ? data.records : [];
+        totalRecords = (data && data.total != null) ? data.total : records.length;
+        totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+        currentRecords = records;
+        if (!records.length) {
+            tbody.innerHTML = '<tr><td colspan="9" class="empty">暂无数据源，点击右上角「新增数据源」开始登记</td></tr>';
+            renderPagination();
+            return;
+        }
+        let html = '';
+        records.forEach(r => {
+            const ops = buildOps(r);
+            const dbLbl = dbTypeLabel(r.dbType);
+            // 空间名后追加共享标记（按 space/options 的 boundDsCount 匹配，未加载时不展示）
+            const spaceCell = (r.spaceName ? esc(r.spaceName) + spaceShareTag(r.spaceName) : '<span class="muted">未绑定</span>')
+                + '<br><span>' + bindBadge(r.spaceBindState) + '</span>'
+                + (r.spaceBindError ? '<div class="muted" style="font-size:11px;word-break:break-all;" title="' + esc(r.spaceBindError) + '">' + esc(r.spaceBindError) + '</div>' : '');
+            html += '<tr>';
+            html += '<td><strong>' + esc(r.dsName) + '</strong>'
+                + '<div class="muted" style="font-size:12px;">' + esc(r.systemCode || '-') + '</div></td>';
+            html += '<td class="mono">' + esc(r.dsId) + '</td>';
+            html += '<td>' + esc(r.systemCode || '-') + '</td>';
+            html += '<td>' + esc(dbLbl) + '</td>';
+            html += '<td>' + spaceCell + '</td>';
+            html += '<td>' + stateBadge(r.manageState) + '</td>';
+            html += '<td>' + healthBadge(r.lastHealthState) + '</td>';
+            html += '<td class="muted" style="white-space:nowrap;">' + fmtTime(r.lastHealthTime) + '</td>';
+            html += '<td>' + ops + '</td>';
+            html += '</tr>';
+        });
+        tbody.innerHTML = html;
+        renderPagination();
+    }
+
+    function buildOps(r) {
+        const id = esc(r.dsId);
+        const state = r.manageState;
+        const parts = [];
+        if (state !== 'DELETED') {
+            parts.push('<button class="btn-small btn-primary" onclick="openEdit(\'' + id + '\')">编辑</button>');
+            parts.push('<button class="btn-small btn-orange" onclick="openRowTest(\'' + id + '\')">测试</button>');
+            if (state === 'DRAFT' || state === 'DISABLED') {
+                parts.push('<button class="btn-small btn-green" onclick="opEnable(\'' + id + '\')">启用</button>');
+            }
+            if (state === 'ACTIVE' || state === 'DRAFT') {
+                parts.push('<button class="btn-small btn-gray" onclick="opDisable(\'' + id + '\')">停用</button>');
+            }
+            parts.push('<button class="btn-small btn-danger" onclick="opDelete(\'' + id + '\')">删除</button>');
+            parts.push('<button class="btn-small btn-primary" onclick="opHealth(\'' + id + '\')">健康</button>');
+            parts.push('<button class="btn-small btn-primary" onclick="openSpaceBind(\'' + id + '\')">空间</button>');
+            parts.push('<button class="btn-small btn-primary" onclick="openOps(\'' + id + '\')">运维</button>');
+        }
+        parts.push('<button class="btn-small btn-gray" onclick="openAudit(\'' + id + '\', \'\')">审计</button>');
+        // 新增：采集调度配置入口（追加在既有按钮之后，不调整既有按钮顺序与文案）
+        parts.push('<button class="btn-small btn-primary" onclick="openSchedule(\'' + id + '\')">采集调度</button>');
+        return parts.join('');
+    }
+
+    function renderPagination() {
+        const el = document.getElementById('dsPage');
+        let html = '<span class="muted">共 ' + totalRecords + ' 条</span>';
+        html += '<button onclick="search(' + (currentPage - 1) + ')"' + (currentPage <= 1 ? ' disabled' : '') + '>上一页</button>';
+        html += '<span class="page-info">第 ' + currentPage + ' / ' + totalPages + ' 页</span>';
+        html += '<button onclick="search(' + (currentPage + 1) + ')"' + (currentPage >= totalPages ? ' disabled' : '') + '>下一页</button>';
+        html += '<label class="filter-label">每页</label><select onchange="changePageSize(this.value)">';
+        [10, 20, 50].forEach(sz => {
+            html += '<option value="' + sz + '"' + (pageSize === sz ? ' selected' : '') + '>' + sz + '</option>';
+        });
+        html += '</select>';
+        el.innerHTML = html;
+    }
+
+    function changePageSize(v) {
+        pageSize = parseInt(v, 10) || 10;
+        search(1);
+    }
+
+    // ==================== 字典 ====================
+    function fillDbTypeSelects() {
+        const filterSel = document.getElementById('selDbType');
+        const formSel = document.getElementById('f_dbType');
+        const optsHtml = ['<option value="">全部</option>'];
+        dbTypes.forEach(t => {
+            optsHtml.push('<option value="' + esc(t.dbType) + '">' + esc(t.label)
+                + (t.providerReady ? '' : '（Provider 未就绪）') + '</option>');
+        });
+        filterSel.innerHTML = optsHtml.join('');
+        const formOpts = ['<option value="">请选择</option>'];
+        dbTypes.forEach(t => {
+            formOpts.push('<option value="' + esc(t.dbType) + '">' + esc(t.label)
+                + (t.providerReady ? '' : '（Provider 未就绪，暂不可登记）') + '</option>');
+        });
+        formSel.innerHTML = formOpts.join('');
+    }
+
+    async function loadMeta() {
+        try {
+            dbTypes = await request('/db-types') || [];
+        } catch (e) {
+            dbTypes = [];
+            toast('库类型字典加载失败：' + e.message, false);
+        }
+        fillDbTypeSelects();
+        // 空间候选加载（llm-wiki 可能暂未就绪，不阻断主流程）
+        try {
+            spaceOptions = await request('/space/options') || [];
+        } catch (e) {
+            spaceOptions = [];
+        }
+        fillSpaceDatalist();
+    }
+
+    /**
+     * 空间共享语义工具（ds-space-sharing）：
+     * 后端 /space/options 新增 boundDsCount/boundDsList/shareStatus/reuseRecommended，旧字段 available/boundDs 保留兼容。
+     * 以下工具对新增/旧字段一律容错：字段缺失时降级为「N 页」备注，不抛异常、不白屏。
+     */
+    function spaceBoundDsCount(o) {
+        if (!o) return 0;
+        if (o.boundDsCount != null) return Number(o.boundDsCount) || 0;
+        if (Array.isArray(o.boundDsList)) return o.boundDsList.length;
+        return o.boundDs ? 1 : 0;
+    }
+
+    /** 共享数据源清单文本（最多列 3 个 dsId，超出以「等」收尾；含 DS 数据，调用方需 esc） */
+    function spaceShareListText(o) {
+        const list = (o && Array.isArray(o.boundDsList)) ? o.boundDsList : [];
+        const ids = list.map(x => (x && x.dsId != null) ? String(x.dsId) : '').filter(Boolean);
+        if (ids.length) return ids.slice(0, 3).join('、') + (ids.length > 3 ? ' 等' : '');
+        return (o && o.boundDs) ? String(o.boundDs) : '';
+    }
+
+    /** 候选/提示备注：共享语义（绑定已放宽为 N:1，可复用已被其他数据源持有的空间） */
+    function spaceShareNote(o) {
+        const count = spaceBoundDsCount(o);
+        const pageText = (o && o.pageCount != null) ? (o.pageCount + ' 页') : '';
+        if (count >= 2) {
+            const list = spaceShareListText(o);
+            return '共享 ' + count + ' 源' + (list ? '（' + list + '）' : '');
+        }
+        if (count === 1) {
+            return pageText ? (pageText + '（已被 1 个数据源使用，可复用）') : '已被 1 个数据源使用，可复用';
+        }
+        return pageText;
+    }
+
+    /** 列表「知识空间」列共享标记：按空间名匹配候选聚合（未加载/失败/无共享时不展示，不报错） */
+    function spaceShareTag(spaceName) {
+        if (!spaceName || !Array.isArray(spaceOptions) || !spaceOptions.length) return '';
+        const hit = spaceOptions.find(o => o && o.name === spaceName);
+        const count = spaceBoundDsCount(hit);
+        if (!hit || count < 1) return '';
+        return ' <span class="badge badge-blue">共享 ' + count + ' 源</span>';
+    }
+
+    function fillSpaceDatalist() {
+        const dl = document.getElementById('spaceDl');
+        dl.innerHTML = '';
+        spaceOptions.forEach(o => {
+            const opt = document.createElement('option');
+            opt.value = o.name || '';
+            // 候选不再因 available===false 屏蔽/置灰：已被其他数据源持有的空间现可共享复用
+            opt.label = spaceShareNote(o);
+            dl.appendChild(opt);
+        });
+    }
+
+    /** 空间名输入实时提示：共享确认（非拒绝）/ 候选可绑定 / 自动创建建议 */
+    function checkSpaceName(inputId, noteId, autoChecked) {
+        const val = document.getElementById(inputId).value.trim();
+        const note = document.getElementById(noteId);
+        if (!val) { note.innerHTML = ''; return; }
+        const hit = spaceOptions.find(o => o.name === val);
+        if (hit) {
+            const count = spaceBoundDsCount(hit);
+            if (count >= 1) {
+                // 共享复用为正常场景：以提示样式（note-ok）展示，允许继续提交注册/编辑
+                const list = spaceShareListText(hit);
+                note.innerHTML = '<div class="field-note note-ok">该空间已被 ' + count + ' 个数据源共享'
+                    + (list ? '（' + esc(list) + '）' : '') + '，将继续复用该空间。</div>';
+            } else {
+                note.innerHTML = '<div class="field-note note-ok">候选空间可绑定'
+                    + (hit.pageCount != null ? '（' + esc(hit.pageCount) + ' 页）' : '') + '。</div>';
+            }
+        } else if (autoChecked) {
+            note.innerHTML = '<div class="field-note note-ok">llm-wiki 中不存在该空间，勾选自动创建时将在绑定/注册阶段尝试创建。</div>';
+        } else {
+            note.innerHTML = '<div class="field-note">该空间未在候选列表中；如需新空间请勾选「自动创建」。</div>';
+        }
+    }
+
+    // ==================== 注册 / 编辑 ====================
+    function openRegister() {
+        formMode = 'register';
+        editingDsId = null;
+        formVersion = null;
+        // 注册态无原白名单可保留（columns 合并仅编辑态生效）
+        editingWhitelist = null;
+        document.getElementById('formTitle').textContent = '新增数据源';
+        resetFormFields();
+        document.getElementById('f_dsId').disabled = false;
+        document.getElementById('btnSaveForm').textContent = '保存';
+        setFormErr('');
+        resetFormTestArea();
+        fillSpaceDatalist();
+        showModal('formModal');
+    }
+
+    async function openEdit(dsId) {
+        try {
+            const detail = await request('/' + encodeURIComponent(dsId));
+            formMode = 'edit';
+            editingDsId = detail.dsId;
+            formVersion = detail.version;
+            // 保存编辑态原白名单：新 UI 仅维护 mode+tables，保存时若原 columns 存在需原样保留
+            editingWhitelist = detail.whitelist || null;
+            document.getElementById('formTitle').textContent = '编辑数据源：' + detail.dsId;
+            resetFormFields();
+            document.getElementById('f_dsId').value = detail.dsId || '';
+            document.getElementById('f_dsId').disabled = true;
+            document.getElementById('f_dsName').value = detail.dsName || '';
+            document.getElementById('f_systemCode').value = detail.systemCode || '';
+            document.getElementById('f_dbType').value = detail.dbType || '';
+            updateDbTypeHint();
+            document.getElementById('f_jdbcUrl').value = detail.jdbcUrl || '';
+            document.getElementById('f_readonlyUser').value = detail.readonlyUser || '';
+            // 敏感项仅显示 ${ENV} 引用，不回显明文
+            document.getElementById('f_passwordRef').value = detail.readonlyPasswordRef || '';
+            document.getElementById('f_ownerGroup').value = detail.ownerGroup || '';
+            wlToUi(detail.whitelist);
+            document.getElementById('f_limits').value = detail.limits ? JSON.stringify(detail.limits, null, 2) : '';
+            document.getElementById('f_spaceName').value = detail.spaceName || '';
+            document.getElementById('f_spaceNames').value = (detail.spaceNames || []).join('\n');
+            document.getElementById('f_autoCreate').checked = false;
+            document.getElementById('f_remark').value = detail.remark || '';
+            document.getElementById('btnSaveForm').textContent = '保存修改';
+            setFormErr('');
+            resetFormTestArea();
+            fillSpaceDatalist();
+            checkSpaceName('f_spaceName', 'formSpaceNote', document.getElementById('f_autoCreate').checked);
+            checkJdbcUrlSchema(); // rca1.8.0.0 功能点 3：编辑态回填后立即给出一致性提示
+            showModal('formModal');
+        } catch (e) {
+            toast('加载数据源详情失败：' + e.message, false);
+        }
+    }
+
+    function resetFormFields() {
+        ['f_dsId', 'f_dsName', 'f_systemCode', 'f_jdbcUrl', 'f_readonlyUser', 'f_passwordRef',
+            'f_ownerGroup', 'f_spaceName', 'f_spaceNames', 'f_remark'].forEach(id => { document.getElementById(id).value = ''; });
+        // 白名单控件组重置：默认「全部表可访问」+ 清空表清单
+        wlToUi(null);
+        document.getElementById('f_limits').value = '';
+        document.getElementById('f_dbType').value = '';
+        document.getElementById('f_autoCreate').checked = false;
+        document.getElementById('formSpaceNote').innerHTML = '';
+        // rca1.8.0.0 功能点 3：连接串/可访问库已清空，同步清空一致性提示，避免残留旧提示
+        document.getElementById('jdbcSchemaNote').innerHTML = '';
+        updateDbTypeHint();
+    }
+
+    function closeForm() {
+        hideModal('formModal');
+        // 关闭时清空一次性测试密码，避免残留
+        document.getElementById('f_passwordTest').value = '';
+    }
+
+    function setFormErr(msg) {
+        const el = document.getElementById('formErr');
+        if (msg) { el.textContent = msg; el.classList.remove('hidden'); } else { el.textContent = ''; el.classList.add('hidden'); }
+    }
+
+    function resetFormTestArea() {
+        document.getElementById('f_passwordTest').value = '';
+        const msg = document.getElementById('formTestMsg');
+        msg.classList.add('hidden'); msg.textContent = '';
+        const res = document.getElementById('formTestResult');
+        res.classList.add('hidden'); res.innerHTML = '';
+    }
+
+    function setFormTestMsg(text, isErr) {
+        const msg = document.getElementById('formTestMsg');
+        msg.textContent = text;
+        msg.className = 'msg ' + (isErr ? 'err' : 'ok');
+    }
+
+    function parseJsonField(id, label) {
+        const raw = document.getElementById(id).value.trim();
+        if (!raw) return null;
+        let obj;
+        try { obj = JSON.parse(raw); } catch (e) {
+            throw new Error(label + '不是合法 JSON，请检查格式');
+        }
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+            throw new Error(label + '必须为 JSON 对象，如 {"a":1}');
+        }
+        return obj;
+    }
+
+    // ==================== 白名单可视化控件组（策略 radio + 表清单 textarea） ====================
+
+    /** 读取当前选中的白名单策略（radio value：ALL / DENY_ONLY / ALLOW_ONLY） */
+    function wlSelectedMode() {
+        const checked = document.querySelector('input[name="wlMode"]:checked');
+        return checked ? checked.value : 'ALL';
+    }
+
+    /** 设置白名单 radio 选中态 */
+    function wlCheckRadio(mode) {
+        document.querySelectorAll('input[name="wlMode"]').forEach(r => {
+            r.checked = (r.value === mode);
+        });
+    }
+
+    /**
+     * radio 联动显示：选「全部表可访问」时表清单禁用淡显（无需填表）；
+     * 选「仅禁止/仅允许」后恢复输入并给出模式语义提示。
+     */
+    function syncWlUi() {
+        const mode = wlSelectedMode();
+        const ta = document.getElementById('f_wlTables');
+        const hint = document.getElementById('wlTablesHint');
+        if (mode === 'ALL') {
+            ta.disabled = true;
+            ta.value = '';
+            hint.textContent = '已选「全部表可访问」，无需填表（保存时不会提交白名单，由数据库只读账号兜底）。';
+        } else {
+            ta.disabled = false;
+            hint.textContent = (mode === 'DENY_ONLY'
+                    ? '黑名单：仅禁止下列表，其余都可访问；清单为空 = 全部放行。'
+                    : '白名单：仅允许下列表，其余拒绝；清单为空 = 全部拒绝，请谨慎。')
+                + '每行一个表名，可整段粘贴换行分隔；支持通配符 * 或 %。';
+        }
+    }
+
+    /** 白名单对象 → UI 回填。whitelist 为 null → 「全部表可访问」；mode 缺失但有 tables → 视为 ALLOW_ONLY */
+    function wlToUi(whitelist) {
+        if (!whitelist) {
+            wlCheckRadio('ALL');
+            document.getElementById('f_wlTables').value = '';
+            syncWlUi();
+            return;
+        }
+        const rawMode = (whitelist.mode && whitelist.mode.trim()) || '';
+        const tables = Array.isArray(whitelist.tables) ? whitelist.tables : [];
+        // 语义对齐 WhitelistRule：缺省 mode 且无 tables → ALL（全部放行）；缺省 mode 但有 tables → ALLOW_ONLY（兼容旧数据）
+        let mode;
+        if (rawMode === 'ALL' || rawMode === 'DENY_ONLY' || rawMode === 'ALLOW_ONLY') {
+            mode = rawMode;
+        } else if (rawMode === '') {
+            mode = tables.length ? 'ALLOW_ONLY' : 'ALL';
+        } else {
+            // 未知 mode（存量脏数据）保守按 ALLOW_ONLY 展示，允许操作员在页面上修正
+            mode = 'ALLOW_ONLY';
+        }
+        if (mode === 'ALL') {
+            wlCheckRadio('ALL');
+            document.getElementById('f_wlTables').value = '';
+        } else {
+            wlCheckRadio(mode);
+            document.getElementById('f_wlTables').value = tables.join('\n');
+        }
+        syncWlUi();
+    }
+
+    /** 表清单 textarea → 规范化表名数组：按换行拆、trim、去空、去重（preserve order） */
+    function wlTablesFromTextarea() {
+        const raw = document.getElementById('f_wlTables').value || '';
+        const seen = new Set();
+        const tables = [];
+        raw.split(/\r?\n/).forEach(line => {
+            const t = (line || '').trim();
+            if (t && !seen.has(t)) { seen.add(t); tables.push(t); }
+        });
+        return tables;
+    }
+
+    /** 可访问库集合 textarea → 规范化库名数组：按换行拆、trim、去空、去重（preserve order） */
+    function spaceNamesFromTextarea() {
+        const raw = document.getElementById('f_spaceNames').value || '';
+        const seen = new Set();
+        const names = [];
+        raw.split(/\r?\n/).forEach(line => {
+            const n = (line || '').trim();
+            if (n && !seen.has(n)) { seen.add(n); names.push(n); }
+        });
+        return names;
+    }
+
+    /**
+     * 解析 JDBC URL 末尾的默认库段（rca1.8.0.0 功能点 3）。
+     * 规则：① 先剥离 `?` 及其之后内容（避免 `?socket=/tmp/x` 之类参数内的 `/` 被误判）；
+     * ② 跳过 `//` 之后的 host:port 授权段，再取路径部分最后一个非空段；
+     * ③ 无 `/` 路径段（如 `jdbc:mysql://h:3306`）或末尾为 `/` → 返回空串（视为无默认库）。
+     * 纯解析函数：异常一律兜底为空串（静默不提示）。
+     */
+    function parseJdbcUrlSchema(url) {
+        try {
+            const raw = String(url == null ? '' : url).trim();
+            if (!raw) return '';
+            const path = raw.split('?')[0];
+            let rest = path;
+            const authIdx = rest.indexOf('//');
+            if (authIdx >= 0) {
+                const afterAuth = rest.slice(authIdx + 2);
+                const firstSlash = afterAuth.indexOf('/');
+                rest = firstSlash >= 0 ? afterAuth.slice(firstSlash + 1) : '';
+            } else {
+                const lastSlash = rest.lastIndexOf('/');
+                rest = lastSlash >= 0 ? rest.slice(lastSlash + 1) : '';
+            }
+            const segs = rest.split('/');
+            for (let i = segs.length - 1; i >= 0; i--) {
+                const s = (segs[i] || '').trim();
+                if (s) return s;
+            }
+            return '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    /**
+     * 连接串默认库 ↔ 可访问库集合一致性即时提示（rca1.8.0.0 功能点 3，非阻断）。
+     * - 可访问库集合为空 → 不判定、不提示（保持既有「不声明库集合」语义）；
+     * - Oracle 族（ORACLE / OCEANBASE_ORACLE）默认不启用该判定（既有实现 schema/Owner 由 SELECT USER FROM DUAL 解析，
+     *   与 thin URL 末尾 service name/SID 口径不同源）；
+     * - 默认库不在集合内（精确匹配）→ 以提示样式（field-note）展示，不禁用/不置灰提交按钮，仍可正常保存与测试；
+     * - 库名为用户自身输入，回显统一经 esc()；解析失败静默不提示。
+     */
+    function checkJdbcUrlSchema() {
+        const note = document.getElementById('jdbcSchemaNote');
+        if (!note) return;
+        try {
+            note.innerHTML = '';
+            const names = spaceNamesFromTextarea();
+            if (!names.length) return;
+            const dbType = document.getElementById('f_dbType').value;
+            if (dbType === 'ORACLE' || dbType === 'OCEANBASE_ORACLE') return;
+            const schema = parseJdbcUrlSchema(document.getElementById('f_jdbcUrl').value);
+            if (!schema) return;
+            if (names.indexOf(schema) !== -1) return;
+            note.innerHTML = '<div class="field-note note-warn">连接串默认库 ' + esc(schema)
+                + ' 不在可访问库集合中，可能导致连接失败或字典权限不足，请确认。</div>';
+        } catch (e) {
+            note.innerHTML = '';
+        }
+    }
+
+    /**
+     * UI → 白名单对象（保存 / 测试连接共用）。
+     * 全部可访问 → 返回 null（body 不携带 whitelist，保持 dbaccess null=全部放行语义）；
+     * 仅禁止 → {mode:'DENY_ONLY', tables:[...]}；仅允许 → {mode:'ALLOW_ONLY', tables:[...]}。
+     * 编辑态若原配置含 columns 列级限制则原样并入返回对象，避免本页面仅维护表级范围时把列级限制清空。
+     */
+    function uiToWl() {
+        const mode = wlSelectedMode();
+        if (mode === 'ALL') {
+            return null;
+        }
+        const tables = wlTablesFromTextarea();
+        const wl = { mode: mode };
+        if (tables.length) wl.tables = tables;
+        if (editingWhitelist && editingWhitelist.columns && Object.keys(editingWhitelist.columns).length) {
+            wl.columns = editingWhitelist.columns;
+        }
+        return wl;
+    }
+
+    function collectSaveBody() {
+        const body = {};
+        const dsId = document.getElementById('f_dsId').value.trim();
+        const dsName = document.getElementById('f_dsName').value.trim();
+        const systemCode = document.getElementById('f_systemCode').value.trim();
+        const dbType = document.getElementById('f_dbType').value;
+        const jdbcUrl = document.getElementById('f_jdbcUrl').value.trim();
+        const readonlyUser = document.getElementById('f_readonlyUser').value.trim();
+        const pwdRef = document.getElementById('f_passwordRef').value.trim();
+        const ownerGroup = document.getElementById('f_ownerGroup').value.trim();
+        const spaceName = document.getElementById('f_spaceName').value.trim();
+        const spaceNames = spaceNamesFromTextarea(); // 可访问库集合（f_spaceName 之外的新字段）
+        const remark = document.getElementById('f_remark').value.trim();
+        if (!dsId) throw new Error('ds_id 必填');
+        if (!/^[a-z0-9][a-z0-9-_]*$/.test(dsId)) throw new Error('ds_id 格式必须为 ^[a-z0-9][a-z0-9-_]*$');
+        if (!dsName) throw new Error('名称必填');
+        if (!dbType) throw new Error('库类型必选');
+        if (!jdbcUrl) throw new Error('JDBC URL 必填');
+        if (!jdbcUrl.startsWith('jdbc:')) throw new Error('JDBC URL 非法（需以 jdbc: 开头）');
+        if (/(\/\/[^@\s/]{1,64}:)[^@\s/]+@/.test(jdbcUrl)) throw new Error('JDBC URL 禁止内嵌账密');
+        if (!readonlyUser) throw new Error('只读账号必填');
+        if (!pwdRef) throw new Error('readonlyPasswordRef 必填');
+        if (!ENV_REF_RE.test(pwdRef)) throw new Error('readonlyPasswordRef 必须为 ${ENV} 引用（如 ${DBACCESS_OA_READONLY_PWD}），禁止明文密码');
+        body.dsId = dsId;
+        body.dsName = dsName;
+        if (systemCode) body.systemCode = systemCode;
+        body.dbType = dbType;
+        body.jdbcUrl = jdbcUrl;
+        body.readonlyUser = readonlyUser;
+        body.readonlyPasswordRef = pwdRef;
+        if (ownerGroup) body.ownerGroup = ownerGroup;
+        if (spaceName) body.spaceName = spaceName;
+        if (spaceNames.length) body.spaceNames = spaceNames; // 空则不传，服务端回落默认库
+        body.autoCreateSpace = document.getElementById('f_autoCreate').checked;
+        if (remark) body.remark = remark;
+        const wl = uiToWl();
+        const lm = parseJsonField('f_limits', '资源限制');
+        if (wl) body.whitelist = wl;
+        if (lm) body.limits = lm;
+        return body;
+    }
+
+    async function saveForm() {
+        let body;
+        try {
+            body = collectSaveBody();
+        } catch (e) {
+            setFormErr(e.message);
+            return;
+        }
+        if (formMode === 'edit') {
+            if (!editingDsId) { setFormErr('编辑目标缺失'); return; }
+            body.dsId = editingDsId;
+            body.version = formVersion;
+        }
+        const btn = document.getElementById('btnSaveForm');
+        busy(btn, true);
+        try {
+            if (formMode === 'register') {
+                await request('/register', { method: 'POST', body: JSON.stringify(body) });
+            } else {
+                await request('/' + encodeURIComponent(editingDsId) + '/update', { method: 'PUT', body: JSON.stringify(body) });
+            }
+            toast(formMode === 'register' ? '注册成功（默认草稿状态，可测试连接后启用）' : '修改成功', true);
+            closeForm();
+            search(1);
+        } catch (e) {
+            setFormErr(e.message);
+        } finally {
+            busy(btn, false);
+        }
+    }
+
+    // ==================== 表单内联测试连接 ====================
+    async function testFromForm() {
+        const btn = document.getElementById('btnTestForm');
+        const dbType = document.getElementById('f_dbType').value;
+        const jdbcUrl = document.getElementById('f_jdbcUrl').value.trim();
+        const readonlyUser = document.getElementById('f_readonlyUser').value.trim();
+        const pwd = document.getElementById('f_passwordTest').value;
+        if (!dbType || !jdbcUrl || !readonlyUser) {
+            setFormTestMsg('请先填写库类型 / JDBC URL / 只读账号再测试', true);
+            return;
+        }
+        if (!pwd) { setFormTestMsg('请输入一次性测试密码或 ${ENV} 引用（如 ${LOCAL_MYSQL_PWD}）', true); return; }
+        const wl = uiToWl(); // 白名单控件组读取：全部可访问返回 null（不提交 whitelist）
+        const payload = {
+            dsId: formMode === 'edit' && editingDsId ? editingDsId : '',
+            dbType: dbType, jdbcUrl: jdbcUrl, readonlyUser: readonlyUser,
+            passwordForTest: pwd,
+            timeoutMs: 3000
+        };
+        if (wl) payload.whitelist = wl;
+        setFormTestMsg('正在测试连接…（短超时，请稍候）', false);
+        busy(btn, true);
+        try {
+            const res = await request('/test-connection', { method: 'POST', body: JSON.stringify(payload) });
+            setFormTestMsg('', false);
+            renderTestResult(document.getElementById('formTestResult'), res, formMode === 'edit' ? editingDsId : '');
+            // 密码一次性使用后清空
+            document.getElementById('f_passwordTest').value = '';
+        } catch (e) {
+            setFormTestMsg(safeMsg(e.message), true);
+        } finally {
+            busy(btn, false);
+        }
+    }
+
+    // ==================== 行内测试连接（已有数据源） ====================
+    function openRowTest(dsId) {
+        const row = currentRecords.find(r => r.dsId === dsId);
+        if (!row) { toast('未找到该数据源', false); return; }
+        rowTestDsId = dsId;
+        document.getElementById('rt_title').textContent = dsId;
+        document.getElementById('rt_dbType').textContent = row.dbType || '-';
+        document.getElementById('rt_jdbcUrl').textContent = row.jdbcUrl || '-';
+        document.getElementById('rt_readonlyUser').textContent = row.readonlyUser || '-';
+        document.getElementById('rt_password').value = '';
+        document.getElementById('rowTestResult').innerHTML = '';
+        showModal('testModal');
+    }
+
+    function closeTest() {
+        hideModal('testModal');
+        document.getElementById('rt_password').value = '';
+        document.getElementById('rowTestResult').innerHTML = '';
+        rowTestDsId = null;
+    }
+
+    async function runRowTest() {
+        const row = currentRecords.find(r => r.dsId === rowTestDsId);
+        if (!row) { toast('未找到该数据源', false); return; }
+        const pwd = document.getElementById('rt_password').value;
+        if (!pwd) {
+            document.getElementById('rowTestResult').innerHTML = '<div class="msg err">请输入一次性测试密码或 ${ENV} 引用（如 ${LOCAL_MYSQL_PWD}）</div>';
+            return;
+        }
+        const payload = {
+            dsId: rowTestDsId, dbType: row.dbType, jdbcUrl: row.jdbcUrl,
+            readonlyUser: row.readonlyUser, passwordForTest: pwd, timeoutMs: 3000
+        };
+        const btn = document.getElementById('btnRunRowTest');
+        busy(btn, true);
+        const resBox = document.getElementById('rowTestResult');
+        resBox.innerHTML = '<div class="msg">正在测试连接…（短超时，请稍候）</div>';
+        try {
+            const res = await request('/test-connection', { method: 'POST', body: JSON.stringify(payload) });
+            resBox.innerHTML = '';
+            renderTestResult(resBox, res, rowTestDsId);
+            // 密码一次性使用后清空
+            document.getElementById('rt_password').value = '';
+        } catch (e) {
+            resBox.innerHTML = '<div class="msg err">' + esc(safeMsg(e.message)) + '</div>';
+        } finally {
+            busy(btn, false);
+        }
+    }
+
+    /**
+     * 新增可空诊断字段（failureCategoryText / failureSuggestion）取值判定：
+     * undefined / null / 空白串 统一视为「缺失」返回空串 → 调用方不渲染该行（兼容旧版后端响应，杜绝 undefined 字面量）。
+     */
+    function diagFieldText(v) {
+        if (v == null) return '';
+        return String(v).trim();
+    }
+
+    /** 渲染健康诊断摘要（PASS/FAIL/诊断项） */
+    function renderTestResult(container, res, dsId) {
+        const result = res && res.checkResult ? res.checkResult : 'FAIL';
+        let head, cls;
+        if (result === 'PASS') {
+            head = '✅ 连接正常（PASS）'; cls = 'ok';
+        } else if (result === 'PARTIAL') {
+            head = '⚠️ 部分通过（PARTIAL）'; cls = 'ok';
+        } else {
+            head = '❌ 连接异常（FAIL）'; cls = 'err';
+        }
+        const line = (label, ok) => ok
+            ? '<span class="diag-item"><span class="muted">' + label + '</span><span class="ok-sym">通过</span></span>'
+            : '<span class="diag-item"><span class="muted">' + label + '</span><span class="fail-sym">未通过</span></span>';
+        const failItems = (res && res.failureItems && res.failureItems.length)
+            ? res.failureItems.map(esc).join('、') : '无';
+        const dialect = res && res.dialectIdentified ? esc(res.dialectIdentified) : 'NOT_IDENTIFIED';
+        // rca1.8.0.0 功能点 1：失败类别 / 处置建议为后端新增可空字段，仅在非空时渲染（旧响应缺失时逐字保持原样）
+        const categoryText = diagFieldText(res && res.failureCategoryText);
+        const suggestion = diagFieldText(res && res.failureSuggestion);
+        let html = '<div class="msg ' + cls + '">' + esc(head)
+            + '（方言=' + dialect + '，耗时 ' + (res && res.costMs != null ? res.costMs : '-') + ' ms）</div>';
+        html += '<div class="json-cell">';
+        html += line('连通性', !!res.connectionOk);
+        html += line('只读账号校验', !!res.readonlyOk);
+        html += line('字典权限探测', !!res.dictionaryOk);
+        html += line('白名单检查', !!res.whitelistOk);
+        html += '<span class="diag-item"><span class="muted">失败项</span><span>' + failItems + '</span></span>';
+        html += '<span class="diag-item"><span class="muted">原因（脱敏）</span><span>' + esc(res.errorMessage || '无') + '</span></span>';
+        if (categoryText) {
+            html += '<span class="diag-item"><span class="muted">失败类别</span><span>' + esc(categoryText) + '</span></span>';
+        }
+        if (suggestion) {
+            html += '<span class="diag-item"><span class="muted">处置建议</span><span>' + esc(suggestion) + '</span></span>';
+        }
+        html += '</div>';
+        if (dsId) {
+            html += '<div style="text-align:right;margin-top:8px;"><button class="btn-small btn-gray" onclick="openHealthLogs(\'' + esc(dsId) + '\', \'\')">查看健康历史</button></div>';
+        }
+        container.innerHTML = html;
+        container.classList.remove('hidden');
+    }
+
+    // ==================== 行内操作：启停/删除/健康 ====================
+    function findRow(dsId) { return currentRecords.find(r => r.dsId === dsId); }
+
+    async function opEnable(dsId) {
+        const row = findRow(dsId);
+        if (!row) return;
+        if (!confirm('确认启用数据源「' + row.dsName + '」（' + dsId + '）？\n启用前将执行健康检查，通过后才能 ACTIVE。')) return;
+        try {
+            const res = await request('/' + encodeURIComponent(dsId) + '/enable', { method: 'POST' });
+            const extra = (res && res.health && res.health.checkResult) ? '（健康检查 ' + res.health.checkResult + '）' : '';
+            toast('启用成功' + extra, true);
+            search(currentPage);
+        } catch (e) {
+            if (e.code === 43005 && e.data && typeof e.data === 'object' && e.data.checkResult) {
+                // 健康检查未通过：弹出结构化诊断（data 带 HealthCheckResultVO）
+                showHealthDetail('启用被拦截：健康检查未通过', e.data, dsId);
+            } else {
+                toast(safeMsg(e.message), false);
+            }
+        }
+    }
+
+    async function opDisable(dsId) {
+        const row = findRow(dsId);
+        if (!row) return;
+        if (!confirm('确认停用数据源「' + row.dsName + '」（' + dsId + '）？\n停用后拒绝新会话；存量会话请另行迁移。')) return;
+        try {
+            await request('/' + encodeURIComponent(dsId) + '/disable', { method: 'POST' });
+            toast('已停用', true);
+            search(currentPage);
+        } catch (e) {
+            toast(safeMsg(e.message), false);
+        }
+    }
+
+    async function opDelete(dsId) {
+        const row = findRow(dsId);
+        if (!row) return;
+        if (!confirm('确认删除数据源「' + row.dsName + '」（' + dsId + '）？\n删除为软删除（DELETED），历史审计保留；若存在采集/检索/反馈下游任务请同步处理。')) return;
+        // 删除原因可选
+        const reason = prompt('删除原因（可留空，将写入审计）：', '');
+        if (reason === null) return;
+        const remark = reason.trim() ? encodeURIComponent(reason.trim()) : '';
+        try {
+            const res = await request('/' + encodeURIComponent(dsId) + '/delete' + (remark ? '?remark=' + remark : ''), { method: 'DELETE' });
+            toast(res && res.warn ? '已删除。' + res.warn : '已删除（软删除）', true);
+            search(1);
+        } catch (e) {
+            toast(safeMsg(e.message), false);
+        }
+    }
+
+    async function opHealth(dsId) {
+        const row = findRow(dsId);
+        if (!row) return;
+        try {
+            const res = await request('/' + encodeURIComponent(dsId) + '/health-check', { method: 'POST' });
+            showHealthDetail('健康检查完成（checkType=' + (res.checkType || 'HEALTH_CHECK') + '）', res, dsId);
+            search(currentPage);
+        } catch (e) {
+            if (e.data && typeof e.data === 'object' && e.data.checkResult) {
+                showHealthDetail('健康检查异常', e.data, dsId);
+            } else {
+                toast(safeMsg(e.message), false);
+            }
+            search(currentPage);
+        }
+    }
+
+    // ==================== 健康诊断 / 健康历史 ====================
+    function showHealthDetail(title, res, dsId) {
+        hdDsId = dsId || null;
+        document.getElementById('hdTitle').textContent = title || '健康诊断';
+        const body = document.getElementById('hdBody');
+        const result = res && res.checkResult ? res.checkResult : 'FAIL';
+        let head, cls;
+        if (result === 'PASS') { head = '✅ 健康（PASS）'; cls = 'ok'; }
+        else if (result === 'PARTIAL') { head = '⚠️ 部分通过（PARTIAL）'; cls = 'ok'; }
+        else { head = '❌ 异常（FAIL）'; cls = 'err'; }
+        const line = (label, ok) => ok
+            ? '<span class="diag-item"><span class="muted">' + label + '</span><span class="ok-sym">通过</span></span>'
+            : '<span class="diag-item"><span class="muted">' + label + '</span><span class="fail-sym">未通过</span></span>';
+        const failItems = (res && res.failureItems && res.failureItems.length)
+            ? res.failureItems.map(esc).join('、') : '无';
+        let html = '<div class="msg ' + cls + '">' + esc(head)
+            + '（方言=' + esc((res && res.dialectIdentified) || 'NOT_IDENTIFIED')
+            + '，耗时 ' + (res && res.costMs != null ? res.costMs : '-') + ' ms）</div>';
+        html += '<div class="json-cell">';
+        html += line('连通性', !!res.connectionOk);
+        html += line('只读账号校验', !!res.readonlyOk);
+        html += line('字典权限探测', !!res.dictionaryOk);
+        html += line('白名单检查', !!res.whitelistOk);
+        html += '<span class="diag-item"><span class="muted">失败项</span><span>' + failItems + '</span></span>';
+        html += '<span class="diag-item"><span class="muted">原因（脱敏）</span><span>' + esc(res.errorMessage || '无') + '</span></span>';
+        html += '<span class="diag-item"><span class="muted">检查时间</span><span>' + fmtTime(res.createTime) + '</span></span>';
+        html += '</div>';
+        body.innerHTML = html;
+        const btnHistory = document.getElementById('btnHdHistory');
+        if (hdDsId) { btnHistory.classList.remove('hidden'); } else { btnHistory.classList.add('hidden'); }
+        showModal('healthDetailModal');
+    }
+
+    function closeHealthDetail() { hideModal('healthDetailModal'); hdDsId = null; }
+
+    function openHealthLogs(dsId, type) {
+        if (!dsId) return;
+        hlDsId = dsId;
+        hlType = type || '';
+        hlPage = 1;
+        document.getElementById('hlDsIdTxt').textContent = dsId;
+        document.getElementById('selHlType').value = hlType;
+        hideModal('healthDetailModal');
+        showModal('healthLogModal');
+        loadHealthLogs();
+    }
+
+    async function loadHealthLogs() {
+        const tbody = document.getElementById('hlTbody');
+        const p = new URLSearchParams();
+        p.set('page', hlPage);
+        p.set('pageSize', 10);
+        if (hlType) p.set('checkType', hlType);
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">加载中...</td></tr>';
+        try {
+            const data = await request('/' + encodeURIComponent(hlDsId) + '/health-logs?' + p.toString());
+            const records = (data && data.records) || [];
+            if (!records.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无健康检查记录</td></tr>';
+                renderHlPage(data ? data.total : 0);
+                return;
+            }
+            let html = '';
+            records.forEach(r => {
+                const items = [];
+                items.push('<span class="' + (r.connectionOk ? 'ok-sym' : 'fail-sym') + '">连</span>');
+                items.push('<span class="' + (r.readonlyOk ? 'ok-sym' : 'fail-sym') + '">读</span>');
+                items.push('<span class="' + (r.dictionaryOk ? 'ok-sym' : 'fail-sym') + '">字</span>');
+                items.push('<span class="' + (r.whitelistOk ? 'ok-sym' : 'fail-sym') + '">白</span>');
+                const failTxt = (r.failureItems && r.failureItems.length) ? r.failureItems.join('、') : '';
+                html += '<tr>';
+                html += '<td style="white-space:nowrap;">' + fmtTime(r.createTime) + '</td>';
+                html += '<td>' + esc(CHECK_LABEL[r.checkType] || r.checkType || '-') + '</td>';
+                html += '<td>' + healthBadge(r.checkResult) + '</td>';
+                html += '<td class="mono">' + esc(r.dialectIdentified || '') + '</td>';
+                html += '<td>' + items.join(' ') + '</td>';
+                html += '<td>' + (r.costMs != null ? r.costMs + 'ms' : '-') + '</td>';
+                html += '<td class="muted" style="word-break:break-all;">' + esc(failTxt ? '失败项：' + failTxt : '')
+                    + (r.errorMessage ? (failTxt ? '；' : '') + esc(r.errorMessage) : '') + '</td>';
+                html += '</tr>';
+            });
+            tbody.innerHTML = html;
+            renderHlPage(data.total);
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty">加载失败：' + esc(e.message) + '</td></tr>';
+        }
+    }
+
+    function renderHlPage(total) {
+        const totalP = Math.max(1, Math.ceil((total || 0) / 10));
+        const el = document.getElementById('hlPage');
+        let html = '<span class="muted">共 ' + (total || 0) + ' 条</span>';
+        html += '<button onclick="hlGo(' + (hlPage - 1) + ')"' + (hlPage <= 1 ? ' disabled' : '') + '>上一页</button>';
+        html += '<span class="page-info">第 ' + hlPage + ' / ' + totalP + ' 页</span>';
+        html += '<button onclick="hlGo(' + (hlPage + 1) + ')"' + (hlPage >= totalP ? ' disabled' : '') + '>下一页</button>';
+        el.innerHTML = html;
+    }
+
+    function hlGo(page) {
+        hlPage = page;
+        loadHealthLogs();
+    }
+
+    function closeHealthLogs() { hideModal('healthLogModal'); hlDsId = null; }
+
+    // ==================== 审计记录 ====================
+    function openAudit(dsId, action) {
+        if (!dsId) return;
+        auditDsId = dsId;
+        auAction = action || '';
+        auPage = 1;
+        document.getElementById('auDsIdTxt').textContent = dsId;
+        document.getElementById('selAction').value = auAction;
+        hideModal('healthDetailModal');
+        showModal('auditModal');
+        loadAuditLogs();
+    }
+
+    async function loadAuditLogs() {
+        const tbody = document.getElementById('auTbody');
+        const p = new URLSearchParams();
+        p.set('page', auPage);
+        p.set('pageSize', 10);
+        if (auAction) p.set('action', auAction);
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">加载中...</td></tr>';
+        try {
+            const data = await request('/' + encodeURIComponent(auditDsId) + '/audit-logs?' + p.toString());
+            const records = (data && data.records) || [];
+            if (!records.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无审计记录</td></tr>';
+                renderAuPage(data ? data.total : 0);
+                return;
+            }
+            let html = '';
+            records.forEach(r => {
+                const detailJson = r.changeDetail ? JSON.stringify(r.changeDetail, null, 2) : '';
+                html += '<tr>';
+                html += '<td style="white-space:nowrap;">' + fmtTime(r.createTime) + '</td>';
+                html += '<td><span class="badge badge-blue">' + esc(ACTION_LABEL[r.action] || r.action || '-') + '</span></td>';
+                html += '<td>' + esc(r.operatorName || (r.operatorId || '-')) + '</td>';
+                html += '<td>' + (r.bizResult === 'SUCCESS'
+                    ? '<span class="ok-sym">成功</span>' : '<span class="fail-sym">失败</span>') + '</td>';
+                html += '<td>' + esc(r.changeSummary || '') + (r.errorMessage ? '<div class="muted" style="font-size:12px;">' + esc(r.errorMessage) + '</div>' : '') + '</td>';
+                html += '<td>' + (detailJson
+                    ? '<pre class="json-cell">' + esc(detailJson) + '</pre>' : '<span class="muted">无</span>') + '</td>';
+                html += '</tr>';
+            });
+            tbody.innerHTML = html;
+            renderAuPage(data.total);
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty">加载失败：' + esc(e.message) + '</td></tr>';
+        }
+    }
+
+    function renderAuPage(total) {
+        const totalP = Math.max(1, Math.ceil((total || 0) / 10));
+        const el = document.getElementById('auPage');
+        let html = '<span class="muted">共 ' + (total || 0) + ' 条</span>';
+        html += '<button onclick="auGo(' + (auPage - 1) + ')"' + (auPage <= 1 ? ' disabled' : '') + '>上一页</button>';
+        html += '<span class="page-info">第 ' + auPage + ' / ' + totalP + ' 页</span>';
+        html += '<button onclick="auGo(' + (auPage + 1) + ')"' + (auPage >= totalP ? ' disabled' : '') + '>下一页</button>';
+        el.innerHTML = html;
+    }
+
+    function auGo(page) {
+        auPage = page;
+        loadAuditLogs();
+    }
+
+    function closeAudit() { hideModal('auditModal'); auditDsId = null; }
+
+    // ==================== 空间绑定 / 重试 ====================
+    async function openSpaceBind(dsId) {
+        const row = findRow(dsId);
+        if (!row) return;
+        bindDsId = dsId;
+        document.getElementById('spDsIdTxt').textContent = dsId;
+        document.getElementById('spName').value = row.spaceName || '';
+        document.getElementById('spAutoCreate').checked = true;
+        document.getElementById('spMsg').classList.add('hidden');
+        document.getElementById('spResult').classList.add('hidden');
+        fillSpaceDatalist();
+        // 空间候选可能为空：提示 llm-wiki 服务暂未就绪、可稍后重试绑定（不阻断）
+        if (!spaceOptions.length) {
+            document.getElementById('spNote').innerHTML = '<div class="field-note note-warn">候选列表为空（llm-wiki 空间服务可能暂未就绪），可直接输入空间名并勾选自动创建，或稍后重试绑定。</div>';
+        } else {
+            document.getElementById('spNote').innerHTML = '';
+        }
+        checkSpaceName('spName', 'spNote', true);
+        showModal('spaceModal');
+    }
+
+    function closeSpace() { hideModal('spaceModal'); bindDsId = null; }
+
+    async function bindSpace() {
+        if (!bindDsId) return;
+        const spaceName = document.getElementById('spName').value.trim();
+        if (!spaceName) {
+            const msg = document.getElementById('spMsg');
+            msg.textContent = '请选择或输入空间名';
+            msg.className = 'msg err';
+            return;
+        }
+        const autoCreate = document.getElementById('spAutoCreate').checked;
+        const payload = { spaceName: spaceName, autoCreate: autoCreate };
+        const msg = document.getElementById('spMsg');
+        msg.className = 'msg';
+        msg.textContent = '正在绑定 llm-wiki 知识空间…';
+        const resBox = document.getElementById('spResult');
+        resBox.classList.add('hidden');
+        try {
+            const res = await request('/' + encodeURIComponent(bindDsId) + '/space/bind',
+                { method: 'POST', body: JSON.stringify(payload) });
+            msg.className = 'msg ok';
+            // 成功文案区分「本次新建」与「复用（含共享复用）」；sharedDsCount 为后端可选字段，缺失时不影响展示
+            const sharedCount = (res.sharedDsCount != null) ? Number(res.sharedDsCount) : 0;
+            msg.textContent = '绑定成功：' + (res.spaceBindState || 'BOUND')
+                + (res.created ? '（本次新建）'
+                    : ('（复用已有' + (sharedCount > 0 ? '，共享 ' + sharedCount + ' 源' : '') + '）'));
+            resBox.classList.remove('hidden');
+            resBox.innerHTML = '<pre class="report">' + esc(JSON.stringify({
+                dsId: res.dsId, spaceName: res.spaceName,
+                spaceBindState: res.spaceBindState, created: res.created,
+                error: res.error || null
+            }, null, 2)) + '</pre>';
+            search(currentPage);
+        } catch (e) {
+            // 43006 空间联动暂未就绪：降级结果带在 data，仍提示可稍后重试
+            if (e.code === 43006 && e.data && typeof e.data === 'object') {
+                msg.className = 'msg err';
+                msg.textContent = 'llm-wiki 空间联动暂未就绪，已降级（BIND_PENDING）：' + safeMsg(e.message);
+                resBox.classList.remove('hidden');
+                resBox.innerHTML = '<pre class="report">' + esc(JSON.stringify(e.data, null, 2)) + '</pre>';
+            } else {
+                msg.className = 'msg err';
+                msg.textContent = safeMsg(e.message);
+            }
+        }
+    }
+
+    // ==================== 运维概况（P2 可选） ====================
+    async function openOps(dsId) {
+        const row = findRow(dsId);
+        if (!row) return;
+        document.getElementById('opsDsIdTxt').textContent = dsId;
+        document.getElementById('opsBody').innerHTML = '<div class="msg">加载中...</div>';
+        showModal('opsModal');
+        try {
+            const o = await request('/' + encodeURIComponent(dsId) + '/ops-summary');
+            let html = '';
+            if (o.lastCrawl && (o.lastCrawl.taskType || o.lastCrawl.status || o.lastCrawl.lastRunTime)) {
+                html += '<div class="diag-item"><span class="muted">最近 Schema 采集</span><span>' + esc(JSON.stringify(o.lastCrawl)) + '</span></div>';
+            } else {
+                html += '<div class="diag-item"><span class="muted">最近 Schema 采集</span><span class="muted">暂无</span></div>';
+            }
+            html += '<div class="diag-item"><span class="muted">待审核任务</span><span>' + (o.pendingReviewCount != null ? o.pendingReviewCount : '暂无') + '</span></div>';
+            html += '<div class="diag-item"><span class="muted">反馈量</span><span>' + (o.feedbackCount != null ? o.feedbackCount : '暂无') + '</span></div>';
+            if (o.degradation) html += '<div class="field-note note-warn">' + esc(o.degradation) + '</div>';
+            document.getElementById('opsBody').innerHTML = '<div class="json-cell">' + html + '</div>';
+        } catch (e) {
+            document.getElementById('opsBody').innerHTML = '<div class="msg err">加载失败：' + esc(e.message) + '</div>';
+        }
+    }
+
+    function closeOps() { hideModal('opsModal'); }
+
+    // ==================== 采集调度配置（KB 自动维护） ====================
+    let scheduleDsId = null;   // 当前调度弹窗对应的数据源实例ID
+
+    /** 调度弹窗消息区（沿用既有 .msg/.msg.ok/.msg.err 样式） */
+    function setSchMsg(text, cls) {
+        const el = document.getElementById('schMsg');
+        if (text) { el.textContent = text; el.className = 'msg' + (cls ? ' ' + cls : ''); }
+        else { el.textContent = ''; el.className = 'msg hidden'; }
+    }
+
+    /**
+     * 打开采集调度弹窗：GET /api/v1/kb-crawler/schedule?ds_id=（只读，无副作用）
+     * 请求失败时仅展示脱敏后的错误信息，弹窗保持打开。
+     */
+    async function openSchedule(dsId) {
+        if (!dsId) return;
+        scheduleDsId = dsId;
+        document.getElementById('schDsId').textContent = dsId;
+        // 先清空上一个数据源的回显，再置为加载态，避免展示错位
+        document.getElementById('schCron').value = '';
+        renderSchedule(null);
+        setSchMsg('');
+        showModal('scheduleModal');
+        try {
+            const resp = await fetch(KB_API_BASE + '/schedule?ds_id=' + encodeURIComponent(dsId),
+                { headers: { 'Content-Type': 'application/json' } });
+            let body = null;
+            try { body = await resp.json(); } catch (e) { throw new Error('请求失败（HTTP ' + resp.status + '）'); }
+            if (body.code !== 0) throw new Error(safeMsg(body.message));
+            renderSchedule(body.data);
+        } catch (e) {
+            setSchMsg('加载失败：' + safeMsg(e.message), 'err');
+        }
+    }
+
+    /**
+     * 渲染调度配置只读区与 cron 输入框回显值（vo 为空时展示占位 '-'）。
+     * 所有回显经 esc() 转义；字段名与后端 KbCrawlScheduleVO 完全一致（camelCase，无二次改名）。
+     */
+    function renderSchedule(vo) {
+        // 任务状态 → 中文文案 + 既有 badge 样式（未知值原样展示）
+        const STATUS_META = {
+            scheduled: { label: '待调度', cls: 'gray' },
+            running:   { label: '运行中', cls: 'orange' },
+            success:   { label: '成功',   cls: 'green' },
+            failed:    { label: '失败',   cls: 'red' }
+        };
+        const v = vo || {};
+        const cron = (v.scheduleCron == null ? '' : String(v.scheduleCron)).trim();
+        const eff = (v.effectiveCron == null ? '' : String(v.effectiveCron)).trim();
+        // scheduleCron 为空 → 输入框回显生效表达式（默认 0 * * * * ? = 每 60 秒）
+        document.getElementById('schCron').value = cron || eff || SCHEDULE_DEFAULT_CRON_HINT;
+
+        const def = (v.defaultCron == null ? '' : String(v.defaultCron)).trim();
+        const defTxt = def ? def + (def === SCHEDULE_DEFAULT_CRON_HINT ? '（每 60 秒）' : '') : '-';
+        document.getElementById('schTaskType').textContent = v.taskType || '-';
+        document.getElementById('schTaskId').textContent = (v.taskId == null ? '-' : v.taskId);
+        document.getElementById('schEffCron').textContent = eff || '-';
+        document.getElementById('schDefCron').textContent = defTxt;
+        document.getElementById('schNextRun').textContent = v.nextRunTime ? fmtTime(v.nextRunTime) : '-';
+        document.getElementById('schLastRun').textContent = v.lastRunTime ? fmtTime(v.lastRunTime) : '-';
+        document.getElementById('schRunCount').textContent = (v.runCount == null ? 0 : v.runCount);
+
+        const st = v.status == null ? '' : String(v.status);
+        const stMeta = STATUS_META[st];
+        document.getElementById('schStatus').innerHTML = st
+            ? '<span class="badge badge-' + (stMeta ? stMeta.cls : 'gray') + '">'
+                + esc(stMeta ? stMeta.label : st) + '</span>'
+            : '-';
+        document.getElementById('schRegistered').innerHTML = vo
+            ? (v.registered === true
+                ? '<span class="badge badge-green">已登记</span>'
+                : '<span class="badge badge-orange">未登记</span>')
+            : '-';
+
+        // 灰字提示：默认表达式 / 未登记 / 下次运行时间未建立基线
+        const notes = [];
+        if (def) notes.push('默认表达式：' + defTxt);
+        if (vo && v.registered !== true) {
+            notes.push('该数据源尚未登记采集任务（启用数据源后自动登记，或保存下方 cron 立即登记）');
+        }
+        if (vo && !v.nextRunTime) notes.push('调度基线建立后将显示下次运行时间');
+        document.getElementById('schNote').innerHTML = notes.map(t => esc(t)).join('<br>');
+    }
+
+    /**
+     * 保存采集调度：PUT /api/v1/kb-crawler/schedule，请求体 {"ds_id":..,"schedule_cron":..}
+     * 成功刷新只读区与输入框回显；失败仅提示（弹窗不关闭、输入不清空），保存期间按钮禁用防重复提交。
+     */
+    async function saveSchedule() {
+        if (!scheduleDsId) return;
+        const btn = document.getElementById('btnSaveSchedule');
+        const cron = document.getElementById('schCron').value.trim();
+        setSchMsg('');
+        busy(btn, true);
+        try {
+            const resp = await fetch(KB_API_BASE + '/schedule', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ds_id: scheduleDsId, schedule_cron: cron })
+            });
+            let body = null;
+            try { body = await resp.json(); } catch (e) { throw new Error('请求失败（HTTP ' + resp.status + '）'); }
+            if (body.code !== 0) {
+                // 40000 非法 cron / 5xxxx 服务异常：展示后端 message（经 safeMsg 兜底脱敏）
+                setSchMsg(safeMsg(body.message), 'err');
+                return;
+            }
+            setSchMsg('采集调度已保存', 'ok');
+            renderSchedule(body.data);
+        } catch (e) {
+            setSchMsg('网络异常，请稍后重试', 'err');
+        } finally {
+            busy(btn, false, '保存');
+        }
+    }
+
+    // ==================== 初始化 ====================
+    document.getElementById('inpKeyword').addEventListener('keydown', e => {
+        if (e.key === 'Enter') search(1);
+    });
+    document.getElementById('f_spaceName').addEventListener('input', e => {
+        checkSpaceName('f_spaceName', 'formSpaceNote', document.getElementById('f_autoCreate').checked);
+    });
+    document.getElementById('f_autoCreate').addEventListener('change', e => {
+        checkSpaceName('f_spaceName', 'formSpaceNote', e.target.checked);
+    });
+    // rca1.8.0.0 功能点 3：连接串默认库 ↔ 可访问库一致性即时提示（input/blur，独立新分支，不改动 checkSpaceName 既有逻辑）
+    document.getElementById('f_jdbcUrl').addEventListener('input', checkJdbcUrlSchema);
+    document.getElementById('f_jdbcUrl').addEventListener('blur', checkJdbcUrlSchema);
+    document.getElementById('f_spaceNames').addEventListener('input', checkJdbcUrlSchema);
+    document.getElementById('f_spaceNames').addEventListener('blur', checkJdbcUrlSchema);
+    document.getElementById('f_dbType').addEventListener('change', checkJdbcUrlSchema);
+    document.getElementById('spName').addEventListener('input', e => {
+        checkSpaceName('spName', 'spNote', document.getElementById('spAutoCreate').checked);
+    });
+    document.getElementById('spAutoCreate').addEventListener('change', e => {
+        checkSpaceName('spName', 'spNote', e.target.checked);
+    });
+    // 含用户输入的表单弹窗 id：点外部/Esc 不直接关闭，避免误触导致已填内容被清空
+    const modalIdsKeepOnBackdrop = ['formModal', 'testModal', 'spaceModal'];
+    // 点击遮罩关闭弹窗：仅对只读展示类弹窗（healthDetail/healthLog/audit/ops）生效，
+    // 表单弹窗（注册/编辑、行内测试、空间绑定）点击遮罩不关闭
+    document.querySelectorAll('.modal-mask').forEach(mask => {
+        mask.addEventListener('click', e => {
+            if (e.target === mask && !modalIdsKeepOnBackdrop.includes(mask.id)) mask.classList.add('hidden');
+        });
+    });
+    // 键盘 Esc 关闭：同样仅对只读展示类弹窗生效；
+    // 若当前打开的是含输入的表单弹窗（formModal/testModal/spaceModal），不隐藏也不清理，直接返回
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            const openMasks = Array.from(document.querySelectorAll('.modal-mask:not(.hidden)'));
+            if (openMasks.some(mask => modalIdsKeepOnBackdrop.includes(mask.id))) return;
+            openMasks.forEach(mask => mask.classList.add('hidden'));
+            // 真正关闭只读弹窗时仍顺带清理一次性测试密码，避免残留
+            document.getElementById('f_passwordTest').value = '';
+            document.getElementById('rt_password').value = '';
+        }
+    });
+
+    // 页面加载：字典 + 第一页
+    loadMeta().then(() => search(1));
+</script>
+</body>
+</html>

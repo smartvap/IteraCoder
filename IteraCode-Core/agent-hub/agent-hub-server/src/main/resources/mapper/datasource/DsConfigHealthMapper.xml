@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.datasource.mapper.DsConfigHealthMapper">
+
+    <!-- 健康历史分页：按 ds_id/check_type 过滤、create_time 倒序（MyBatis-Plus PaginationInnerInterceptor 自动分页，SQL 不写 limit） -->
+    <select id="selectPageHealths" resultType="com.agenthub.ai.datasource.entity.DsConfigHealth">
+        SELECT id, ds_id, check_type, check_result, dialect_identified,
+               connection_ok, readonly_ok, dictionary_ok, whitelist_ok,
+               failure_items, error_message, cost_ms, operator_id, create_time
+        FROM t_ds_config_health
+        <where>
+            <if test="dsId != null and dsId != ''">
+                AND ds_id = #{dsId}
+            </if>
+            <if test="checkType != null and checkType != ''">
+                AND check_type = #{checkType}
+            </if>
+        </where>
+        ORDER BY create_time DESC, id DESC
+    </select>
+
+    <!-- 最近一条健康/测试记录 -->
+    <select id="selectLatestByDs" resultType="com.agenthub.ai.datasource.entity.DsConfigHealth">
+        SELECT id, ds_id, check_type, check_result, dialect_identified,
+               connection_ok, readonly_ok, dictionary_ok, whitelist_ok,
+               failure_items, error_message, cost_ms, operator_id, create_time
+        FROM t_ds_config_health
+        WHERE ds_id = #{dsId}
+        ORDER BY create_time DESC, id DESC
+        LIMIT 1
+    </select>
+
+</mapper>

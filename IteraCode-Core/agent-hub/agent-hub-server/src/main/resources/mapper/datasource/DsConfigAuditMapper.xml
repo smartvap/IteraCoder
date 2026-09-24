@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.datasource.mapper.DsConfigAuditMapper">
+
+    <!-- 审计分页：按 ds_id/action 过滤、create_time 倒序（MyBatis-Plus PaginationInnerInterceptor 自动分页，SQL 不写 limit） -->
+    <select id="selectPageAudits" resultType="com.agenthub.ai.datasource.entity.DsConfigAudit">
+        SELECT id, ds_id, action, operator_id, operator_name,
+               change_summary, change_detail, biz_result, error_message, create_time
+        FROM t_ds_config_audit
+        <where>
+            <if test="dsId != null and dsId != ''">
+                AND ds_id = #{dsId}
+            </if>
+            <if test="action != null and action != ''">
+                AND action = #{action}
+            </if>
+        </where>
+        ORDER BY create_time DESC, id DESC
+    </select>
+
+</mapper>

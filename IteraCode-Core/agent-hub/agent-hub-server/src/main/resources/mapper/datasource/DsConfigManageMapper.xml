@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.datasource.mapper.DsConfigManageMapper">
+
+    <!-- 列表分页：t_ds_config 联查 t_ds_config_admin（admin 按 manage_state/system_code/db_type/keyword 过滤）
+         分页由 MyBatis-Plus PaginationInnerInterceptor 自动拼接 limit/count（SQL 不写 limit） -->
+    <select id="selectPageConfigs" resultType="com.agenthub.ai.datasource.vo.DsConfigVO">
+        SELECT cfg.id AS id,
+               cfg.ds_id AS dsId,
+               cfg.ds_name AS dsName,
+               cfg.system_code AS systemCode,
+               cfg.db_type AS dbType,
+               cfg.jdbc_url AS jdbcUrl,
+               cfg.driver_class AS driverClass,
+               cfg.readonly_user AS readonlyUser,
+               cfg.readonly_password_ref AS readonlyPasswordRef,
+               cfg.owner_group AS ownerGroup,
+               cfg.space_name AS spaceName,
+               cfg.space_names AS spaceNamesJson,
+               cfg.whitelist_json AS whitelistJson,
+               cfg.limits_json AS limitsJson,
+               cfg.status AS status,
+               cfg.remark AS remark,
+               cfg.version AS version,
+               cfg.create_time AS createTime,
+               cfg.update_time AS updateTime,
+               cfg.is_deleted AS isDeleted,
+               adm.manage_state AS manageState,
+               adm.space_bind_state AS spaceBindState,
+               adm.space_bind_error AS spaceBindError,
+               adm.last_health_state AS lastHealthState,
+               adm.last_health_time AS lastHealthTime
+        FROM t_ds_config cfg
+        INNER JOIN t_ds_config_admin adm ON adm.ds_id = cfg.ds_id AND adm.is_deleted = 0
+        <where>
+            <!-- 默认排除 DELETED；仅当 manageState=DELETED 时返回已软删行 -->
+            <choose>
+                <when test="query.manageState != null and query.manageState == 'DELETED'">
+                    AND cfg.is_deleted = 1
+                </when>
+                <otherwise>
+                    AND cfg.is_deleted = 0
+                </otherwise>
+            </choose>
+            <if test="query.manageState != null and query.manageState != ''">
+                AND adm.manage_state = #{query.manageState}
+            </if>
+            <if test="query.systemCode != null and query.systemCode != ''">
+                AND cfg.system_code = #{query.systemCode}
+            </if>
+            <if test="query.dbType != null and query.dbType != ''">
+                AND cfg.db_type = #{query.dbType}
+            </if>
+            <if test="query.spaceName != null and query.spaceName != ''">
+                AND cfg.space_name = #{query.spaceName}
+            </if>
+            <if test="query.keyword != null and query.keyword != ''">
+                AND (cfg.ds_name LIKE CONCAT('%', #{query.keyword}, '%')
+                     OR cfg.ds_id LIKE CONCAT('%', #{query.keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY cfg.update_time DESC, cfg.id DESC
+    </select>
+
+    <!-- 空间共享原始清单（N:1 共享复用）：返回所有非 DELETED 数据源的 space_name→ds_id→manage_state 逐行数据
+         （DRAFT/DISABLED 同样计入共享，仅 DELETED 不参与统计）；SQL 保持逐行返回不变，
+         由服务层 DsSpaceSharingService 按 space_name 内存分组聚合共享计数/清单 -->
+    <select id="selectBoundSpaces" resultType="com.agenthub.ai.datasource.vo.DsBoundSpaceVO">
+        SELECT cfg.ds_id AS dsId,
+               cfg.space_name AS spaceName,
+               adm.manage_state AS manageState
+        FROM t_ds_config cfg
+        INNER JOIN t_ds_config_admin adm ON adm.ds_id = cfg.ds_id AND adm.is_deleted = 0
+        WHERE cfg.is_deleted = 0
+          AND cfg.space_name IS NOT NULL
+          AND cfg.space_name != ''
+          AND adm.manage_state != 'DELETED'
+    </select>
+
+</mapper>

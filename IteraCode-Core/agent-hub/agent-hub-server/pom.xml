@@ -170,6 +170,20 @@
             <version>3.4.2</version>
         </dependency>
 
+        <!-- module-006 sql-validate-guard：JSqlParser SQL AST 解析（版本 4.9+，MySQL 方言 P0 完整） -->
+        <dependency>
+            <groupId>com.github.jsqlparser</groupId>
+            <artifactId>jsqlparser</artifactId>
+            <version>4.9</version>
+        </dependency>
+
+        <!-- module-002 db-access-common（agent-hub-dbaccess SPI 库）：T004 只读复用 DataSourceRegistry.getConfig 做 ds_id↔llm-wiki space 映射 -->
+        <dependency>
+            <groupId>com.agenthub</groupId>
+            <artifactId>agent-hub-dbaccess</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
     </dependencies>
     
     <build>

@@ -27,10 +27,11 @@
         <mybatis-plus.version>3.5.11</mybatis-plus.version>
         <fastjson2.version>2.0.32</fastjson2.version>
         <jjwt.version>0.11.5</jjwt.version>
-        <pagehelper.version>1.4.6</pagehelper.version>
         <ik-analyzer.version>8.5.0</ik-analyzer.version>
         <druid.version>1.2.23</druid.version>
         <mysql-connector.version>8.0.33</mysql-connector.version>
+        <oceanbase-client.version>2.4.10</oceanbase-client.version>
+        <ojdbc8.version>19.22.0.0</ojdbc8.version>
         <milvus-spring-ai.version>1.1.2</milvus-spring-ai.version>
         <alibaba-cloud-ai.version>1.1.2.3</alibaba-cloud-ai.version>
         <model-ollama.version>1.1.2</model-ollama.version>
@@ -133,11 +134,6 @@
                 <version>${jjwt.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.github.pagehelper</groupId>
-                <artifactId>pagehelper-spring-boot-starter</artifactId>
-                <version>${pagehelper.version}</version>
-            </dependency>
-            <dependency>
                 <groupId>com.github.magese</groupId>
                 <artifactId>ik-analyzer</artifactId>
                 <version>${ik-analyzer.version}</version>
@@ -153,6 +149,20 @@
                 <version>${mysql-connector.version}</version>
             </dependency>
 
+            <!-- OceanBase JDBC 驱动（服务 OCEANBASE_MYSQL / OCEANBASE_ORACLE），版本集中管理 -->
+            <dependency>
+                <groupId>com.oceanbase</groupId>
+                <artifactId>oceanbase-client</artifactId>
+                <version>${oceanbase-client.version}</version>
+            </dependency>
+
+            <!-- Oracle JDBC 驱动（服务 ORACLE），版本集中管理 -->
+            <dependency>
+                <groupId>com.oracle.database.jdbc</groupId>
+                <artifactId>ojdbc8</artifactId>
+                <version>${ojdbc8.version}</version>
+            </dependency>
+
             <dependency>
                 <groupId>org.redisson</groupId>
                 <artifactId>redisson</artifactId>
@@ -165,6 +175,7 @@
     <!-- 父工程模块声明（指定子工程） -->
     <modules>
         <module>agent-hub-server</module> <!-- 子工程的目录名，需与实际一致 -->
+        <module>agent-hub-dbaccess</module> <!-- 数据库访问公共模块（Java SPI 库），被 server 及 module-003/006/007/009 依赖 -->
     </modules>
 
     <!-- 插件管理（可选，统一编译、打包插件版本） -->

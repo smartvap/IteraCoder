@@ -17,10 +17,12 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Skill 加载器：从 classpath:skills/{category}/*.md 加载技能文件，
- * 以子目录名作为分类（dev/ops），解析 frontmatter 元数据和指令正文，供 ReactAgent 使用。
+ * Skill 加载器：从 classpath:skills 下递归加载技能文件，
+ * 以 skills 之后目录部分的叶子目录名作为分类
+ * （e.g. skills/workflow/design/xxx.md → design，skills/rc/xxx.md → rc），
+ * 解析 frontmatter 元数据和指令正文，供 ReactAgent 使用。
  * <p>
- * 自动跳过 skills-catalog.md（根目录下的非技能文件）。
+ * 自动跳过直接位于 skills/ 根目录下的非技能文件（如 skills-catalog.md）。
  */
 @Slf4j
 @Component
@@ -68,10 +70,10 @@ public class SkillLoader {
     }
 
     /**
-     * 解析单个 skill 文件，从路径提取父目录名作为 category
+     * 解析单个 skill 文件，从路径提取叶子目录名作为 category
      */
     private SkillContent parseSkillFile(Resource resource) throws Exception {
-        // 从路径提取目录名 e.g. "skills/dev/xxx.md" → "dev"
+        // 从路径提取叶子目录名 e.g. "skills/workflow/design/xxx.md" → "design"
         String path = resource.getURI().toString();
         String directory = extractDirectory(path);
 
@@ -97,21 +99,29 @@ public class SkillLoader {
     }
 
     /**
-     * 从资源路径提取父目录名
-     * e.g. ".../skills/dev/code-generation.md" → "dev"
+     * 从资源路径提取 skills 之后目录部分的叶子目录名。
+     * <p>
+     * e.g. ".../skills/workflow/design/requirement-analysis.md" → "design"；
+     * ".../skills/rc/rc-answer.md" → "rc"；
+     * ".../skills/skills-catalog.md" → ""（文件直接在 skills/ 下，非技能文件）。
+     * <p>
+     * 使用 lastIndexOf("/skills/") 定位，兼容 jar 内资源 URI。
      */
     private String extractDirectory(String path) {
         int skillsIdx = path.lastIndexOf("/skills/");
         if (skillsIdx < 0) {
             return "";
         }
-        int dirStart = skillsIdx + "/skills/".length();
-        int dirEnd = path.indexOf('/', dirStart);
-        if (dirEnd < 0) {
+        String rel = path.substring(skillsIdx + "/skills/".length());
+        int lastSlash = rel.lastIndexOf('/');
+        if (lastSlash < 0) {
             // 文件在 skills/ 根目录下，无子目录
             return "";
         }
-        return path.substring(dirStart, dirEnd);
+        // 去掉文件名，取目录部分（可能多级）的最后一个 "/" 之后的叶子目录名
+        String dir = rel.substring(0, lastSlash);
+        int leafSlash = dir.lastIndexOf('/');
+        return leafSlash < 0 ? dir : dir.substring(leafSlash + 1);
     }
 
     /**
