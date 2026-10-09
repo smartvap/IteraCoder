@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.kb.mapper.KbBusinessConceptMapper">
+
+    <!-- 语义检索-概念召回（接口24）：关键词匹配概念名/定义/同义词；默认高置信 -->
+    <select id="selectRetrievalConcepts" resultType="com.agenthub.ai.rcagent.kb.entity.KbBusinessConcept">
+        SELECT id, ds_id, concept_name, definition, synonyms, related_tables,
+               related_columns, related_sql_ids, space_name, knowledge_source,
+               confidence, verified, evidence, status, version, hit_count, error_count,
+               create_time, update_time
+        FROM kb_business_concept
+        WHERE ds_id = #{dsId}
+          AND verified = 1 AND status = 'active'
+        <if test="keyword != null and keyword != ''">
+            AND (concept_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR definition LIKE CONCAT('%', #{keyword}, '%')
+                 OR synonyms LIKE CONCAT('%', #{keyword}, '%')
+                 OR related_tables LIKE CONCAT('%', '"', #{keyword}, '"', '%'))
+        </if>
+        <if test="spaceName != null and spaceName != ''">
+            AND space_name = #{spaceName}
+        </if>
+        ORDER BY confidence DESC, create_time DESC
+        LIMIT #{topK}
+    </select>
+
+</mapper>

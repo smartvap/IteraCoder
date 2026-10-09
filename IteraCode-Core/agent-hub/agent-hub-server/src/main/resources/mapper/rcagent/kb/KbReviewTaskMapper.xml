@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.kb.mapper.KbReviewTaskMapper">
+
+    <!-- 审核任务分页（接口12）：由 MyBatis-Plus PaginationInnerInterceptor 自动分页，SQL 不写 limit -->
+    <select id="selectPageTasks" resultType="com.agenthub.ai.rcagent.kb.entity.KbReviewTask">
+        SELECT id, ds_id, task_type, target_object_type, target_object, suggested_change,
+               evidence, status, reviewer, review_comment, reviewed_at, create_time, update_time
+        FROM kb_review_task
+        WHERE ds_id = #{dsId}
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="taskType != null and taskType != ''">
+            AND task_type = #{taskType}
+        </if>
+        <if test="targetObjectType != null and targetObjectType != ''">
+            AND target_object_type = #{targetObjectType}
+        </if>
+        <if test="reviewer != null and reviewer != ''">
+            AND reviewer = #{reviewer}
+        </if>
+        <if test="startTime != null">
+            AND create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

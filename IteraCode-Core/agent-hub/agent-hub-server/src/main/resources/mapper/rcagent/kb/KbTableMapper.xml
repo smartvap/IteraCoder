@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.kb.mapper.KbTableMapper">
+
+    <!-- Schema 检索-表候选（接口20）。列自动下划线→驼峰映射（MP 默认 mapUnderscoreToCamelCase=true）。 -->
+    <select id="selectRetrievalTables" resultType="com.agenthub.ai.rcagent.kb.entity.KbTable">
+        SELECT id, ds_id, db_type, schema_name, table_name, table_type, comment_text,
+               semantic_tags, sample_stats, knowledge_source, confidence, verified,
+               evidence, status, version, hit_count, error_count, create_time, update_time
+        FROM kb_table
+        WHERE ds_id = #{dsId}
+        <if test="includeDraft == false">
+            AND verified = 1 AND status = 'active'
+        </if>
+        <if test="includeDraft">
+            AND status &lt;&gt; 'deprecated'
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (table_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR comment_text LIKE CONCAT('%', #{keyword}, '%')
+                 OR semantic_tags LIKE CONCAT('%', '"', #{keyword}, '"', '%'))
+        </if>
+        <if test="tableNames != null and tableNames.size() > 0">
+            AND table_name IN
+            <foreach collection="tableNames" item="tn" open="(" separator="," close=")">
+                #{tn}
+            </foreach>
+        </if>
+        <!-- 限定名精确匹配（跨库同名表按 schema 区分）：schema_name.table_name 与入参做 UPPER 比较，
+             入参在 service 层已 UPPER，此处再 UPPER(#{q}) 兜底以保证 SQL 自洽 -->
+        <if test="qualifiedTableNames != null and qualifiedTableNames.size() > 0">
+            AND UPPER(CONCAT(schema_name, '.', table_name)) IN
+            <foreach collection="qualifiedTableNames" item="q" open="(" separator="," close=")">
+                UPPER(#{q})
+            </foreach>
+        </if>
+        <if test="semanticTags != null and semanticTags.size() > 0">
+            AND
+            <foreach collection="semanticTags" item="tag" open="(" separator=" OR " close=")">
+                semantic_tags LIKE CONCAT('%', '"', #{tag}, '"', '%')
+            </foreach>
+        </if>
+        ORDER BY verified DESC, confidence DESC, create_time DESC
+        LIMIT #{topK}
+    </select>
+
+</mapper>

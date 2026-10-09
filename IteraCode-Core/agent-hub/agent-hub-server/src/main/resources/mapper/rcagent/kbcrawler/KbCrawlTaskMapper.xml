@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.kbcrawler.mapper.KbCrawlTaskMapper">
+
+    <!-- 任务分页/列表查询（由 MyBatis-Plus PaginationInnerInterceptor 自动分页，SQL 不写 limit） -->
+    <select id="selectTaskList" resultType="com.agenthub.ai.rcagent.kbcrawler.entity.KbCrawlTask">
+        SELECT id, ds_id, task_type, task_name, status, pause_flag, trigger_type,
+               last_run_time, last_result, last_error, run_count, remark, schedule_cron, next_run_time,
+               create_time, update_time
+        FROM kb_crawl_task
+        <where>
+            <if test="dsId != null and dsId != ''">
+                AND ds_id = #{dsId}
+            </if>
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+        </where>
+        ORDER BY ds_id ASC, task_type ASC, id DESC
+    </select>
+
+    <!-- 调度器扫描：pause_flag=0 且非运行中的任务（分页处理由调用方批量加载） -->
+    <select id="selectSchedulable" resultType="com.agenthub.ai.rcagent.kbcrawler.entity.KbCrawlTask">
+        SELECT id, ds_id, task_type, task_name, status, pause_flag, trigger_type,
+               last_run_time, last_result, last_error, run_count, remark, schedule_cron, next_run_time,
+               create_time, update_time
+        FROM kb_crawl_task
+        WHERE pause_flag = 0
+          AND status &lt;&gt; 'running'
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY ISNULL(last_run_time), last_run_time ASC, id ASC
+    </select>
+
+    <!--
+      到点抢占（CAS）：仅当任务仍可调度且已到点（或尚无调度基线）时推进 next_run_time。
+      next_run_time IS NULL 表示尚未建立调度基线（遗留行/首次登记），视为到点，写回后自愈。
+      SQL 全 #{} 参数化；XML 中的 <> 已转义。
+    -->
+    <update id="claimDue">
+        UPDATE kb_crawl_task
+           SET next_run_time = #{next},
+               update_time = NOW()
+         WHERE id = #{id}
+           AND pause_flag = 0
+           AND status &lt;&gt; 'running'
+           AND (next_run_time IS NULL OR next_run_time &lt;= #{now})
+    </update>
+
+</mapper>

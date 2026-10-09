@@ -27,8 +27,8 @@ agenthub:
     code-storage-path: "D:\\agenthub-codegen"  # 本地目录，不配或为空时默认项目根目录/temp
     git:
       enabled: true                          # 是否将项目代码推送到远程 Git 仓库
-      remote-url: http://192.168.46.147:3000       # Git 服务地址（Gitea/GitLab）
-      api-base-url: http://192.168.46.147:3000/api/v1  # API 地址（Gitea: /api/v1, GitLab: /api/v4）
+      remote-url: http://192.168.46.148:3000       # Git 服务地址（Gitea/GitLab）
+      api-base-url: http://192.168.46.148:3000/api/v1  # API 地址（Gitea: /api/v1, GitLab: /api/v4）
       token: "${GIT_TOKEN}"                  # API Token（环境变量优先，避免硬编码）
       repo-owner: agent-hub                    # 仓库所属组织/用户
       username: agent                      # 提交者姓名
@@ -54,6 +54,39 @@ agenthub:
     user-secret-key: agent_jwt_secret_key_for_user_access_256_bits_required
     user-ttl: 7200000
     user-token-name: authorization
+  # attribution 归因（默认阈值/上限见 AttributionProperties，可不配）
+  attribution:
+    review:
+      # 接口 3 include_sql=true 展示归因 SQL 原文的审核人白名单。
+      # 默认空 = fail-closed（一律 40300 拒绝，不回传 sql_text）。
+      # 当前 JWT 为占位实现（登录态 userId=1522022），dev 联调需放开时在 application-dev.yml 配置：
+      #   reviewer-user-ids:
+      #     - 1522022
+      # 真实 RBAC 落地后应替换为角色/权限点校验。
+      reviewer-user-ids: []
+  # RCAgent 查数归因工作流（rd 平行实例，独立 saver 与模型角色；缺省回退主模型）
+  rcagent:
+    saver-type: mysql                 # 会话状态存储: memory / mysql / redis（checkpoint 按 thread_name 与 rd 隔离）
+    model-roles:                      # 固定角色 → 模型名映射（需与 spring.ai.models 中某个 name 一致；不配则回退主模型）
+      intent: qwen3:8b-q4_K_M         # 意图识别
+      sql-plan: qwen3:8b-q4_K_M       # SQL 规划
+      sql-generate: qwen3:8b-q4_K_M           # SQL 生成（需要较强指令遵循）
+      attribution: qwen3:8b-q4_K_M    # 归因衔接摘要
+    source:                           # 多源会话候选源配置（module-002 multi-source-session）
+      max-candidates: 4               # 单个会话候选数据源上限（超限 40000 拒绝，不静默截断）
+    cross-source:                     # 跨源 join 配置（module-003 cross-source-join；类内默认值与此处一致，缺配置不启动失败）
+      enabled: true                   # 跨源总开关；false → 永不进入跨源分支（一键回滚，零回归）
+      max-sources: 2                  # 参与 join 的源数上限（超出明确拒绝，不静默截断）
+      per-source-row-limit: 2000      # 每源行数上限（实际生效 = min(本值, ds limits, db-access 模块默认)）
+      merged-row-limit: 2000          # 合并后行数上限（超限截断并标注）
+      semi-join-pushdown-enabled: true  # 半连接下推开关（一侧 key 集合 → 另一侧 WHERE key IN (...)）
+      semi-join-in-threshold: 1000    # 单条 IN (...) 元素上限（超出分片）
+      semi-join-max-shards: 10        # 分片数上限（超出 → 回退不下推，仅内存 join）
+      join-key-ignore-case: false     # join key 字符串比较是否忽略大小写（默认仅 trim）
+      plan-max-len: 4000              # 计划文本/JSON 截断
+      source-sql-max-len: 20000       # 单源 SQL 截断（与既有 sql_generate 截断一致）
+      note-max-len: 500               # cross_source_note 截断
+      key-literal-max-len: 64         # 下推字面量（字符串）长度上限，超出剔除该 key
 
 logging:
   level:

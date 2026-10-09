@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.engine.mapper.RcaDsSourceMapper">
+
+    <!-- 候选源公共列：仅非敏感字段，禁止 SELECT *（AGENTS.md 5.x / data-model.md §7 DM-10） -->
+    <sql id="candidateColumns">
+        cfg.ds_id        AS dsId,
+        cfg.ds_name      AS dsName,
+        cfg.system_code  AS systemCode,
+        cfg.db_type      AS dbType,
+        adm.manage_state AS manageState
+    </sql>
+
+    <!-- 候选源判定口径：双表 is_deleted=0 且 cfg.status=1 且 adm.manage_state='ACTIVE'（data-model.md §2.1/§4.2） -->
+    <sql id="activeCandidateFrom">
+        FROM t_ds_config cfg
+        INNER JOIN t_ds_config_admin adm ON adm.ds_id = cfg.ds_id AND adm.is_deleted = 0
+        WHERE cfg.is_deleted = 0
+          AND cfg.status = 1
+          AND adm.manage_state = 'ACTIVE'
+    </sql>
+
+    <!-- 按系统编码展开候选源（按 ds_id 升序，顺序稳定可预期） -->
+    <select id="selectActiveCandidatesBySystemCode"
+            resultType="com.agenthub.ai.rcagent.engine.vo.RcaSourceCandidateVO">
+        SELECT <include refid="candidateColumns"/>
+        <include refid="activeCandidateFrom"/>
+          AND cfg.system_code = #{systemCode}
+        ORDER BY cfg.ds_id ASC
+    </select>
+
+    <!-- 按显式 ds_id 集合查询候选源（IN 用 foreach + #{} 参数化，禁止字符串拼接） -->
+    <select id="selectActiveCandidatesByDsIds"
+            resultType="com.agenthub.ai.rcagent.engine.vo.RcaSourceCandidateVO">
+        SELECT <include refid="candidateColumns"/>
+        <include refid="activeCandidateFrom"/>
+          AND cfg.ds_id IN
+          <foreach collection="dsIds" item="item" open="(" separator="," close=")">#{item}</foreach>
+        ORDER BY cfg.ds_id ASC
+    </select>
+
+    <!-- 单个 ds_id 精确查询（存在性/ACTIVE 校验；不存在返回空） -->
+    <select id="selectActiveCandidateByDsId"
+            resultType="com.agenthub.ai.rcagent.engine.vo.RcaSourceCandidateVO">
+        SELECT <include refid="candidateColumns"/>
+        <include refid="activeCandidateFrom"/>
+          AND cfg.ds_id = #{dsId}
+        LIMIT 1
+    </select>
+
+    <!-- 全部 ACTIVE 候选源（含未分组），供服务层按 system_code 内存分组 -->
+    <select id="selectActiveSystemGroups"
+            resultType="com.agenthub.ai.rcagent.engine.vo.RcaSourceCandidateVO">
+        SELECT <include refid="candidateColumns"/>
+        <include refid="activeCandidateFrom"/>
+        ORDER BY cfg.system_code ASC, cfg.ds_id ASC
+    </select>
+
+</mapper>

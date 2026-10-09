@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.attribution.mapper.RcagentAttributionTaskMapper">
+
+    <!-- 归因历史分页（接口4）：由 MyBatis-Plus PaginationInnerInterceptor 自动分页，SQL 不写 limit -->
+    <select id="selectPageTasks" resultType="com.agenthub.ai.rcagent.attribution.entity.RcagentAttributionTask">
+        SELECT id, task_id, thread_id, parent_task_id, ds_id, metric_name, kb_metric_id,
+               metric_definition_verified, trigger_type, question, compare_type, status, review_state,
+               anomaly_json, drill_depth, query_count, confidence, conclusion_summary,
+               result_status, sensitive_flag, error_msg, create_time, update_time
+        FROM rcagent_attribution_task
+        <where>
+            is_deleted = 0
+            <if test="q != null">
+                <if test="q.dsId != null and q.dsId != ''">
+                    AND ds_id = #{q.dsId}
+                </if>
+                <if test="q.metricName != null and q.metricName != ''">
+                    AND metric_name LIKE CONCAT('%', #{q.metricName}, '%')
+                </if>
+                <if test="q.triggerType != null and q.triggerType != ''">
+                    AND trigger_type = #{q.triggerType}
+                </if>
+                <if test="q.status != null and q.status != ''">
+                    AND status = #{q.status}
+                </if>
+                <if test="q.resultStatus != null and q.resultStatus != ''">
+                    AND result_status = #{q.resultStatus}
+                </if>
+                <if test="q.startDate != null and q.startDate != ''">
+                    AND DATE(create_time) &gt;= #{q.startDate}
+                </if>
+                <if test="q.endDate != null and q.endDate != ''">
+                    AND DATE(create_time) &lt;= #{q.endDate}
+                </if>
+            </if>
+        </where>
+        ORDER BY create_time DESC, id DESC
+    </select>
+
+    <!-- 结论待审任务（CONCLUSION_REVIEWING，审核台待办） -->
+    <select id="selectReviewPendingTasks" resultType="com.agenthub.ai.rcagent.attribution.entity.RcagentAttributionTask">
+        SELECT id, task_id, thread_id, parent_task_id, ds_id, metric_name, kb_metric_id,
+               metric_definition_verified, trigger_type, question, compare_type, status, review_state,
+               anomaly_json, drill_depth, query_count, confidence, conclusion_summary,
+               result_status, sensitive_flag, error_msg, create_time, update_time
+        FROM rcagent_attribution_task
+        WHERE is_deleted = 0
+          AND status = 'CONCLUSION_REVIEWING'
+          AND review_state = 'CONCLUSION_REVIEWING'
+          <if test="dsId != null and dsId != ''">
+              AND ds_id = #{dsId}
+          </if>
+          <if test="taskId != null and taskId != ''">
+              AND task_id = #{taskId}
+          </if>
+        ORDER BY create_time DESC, id DESC
+    </select>
+</mapper>

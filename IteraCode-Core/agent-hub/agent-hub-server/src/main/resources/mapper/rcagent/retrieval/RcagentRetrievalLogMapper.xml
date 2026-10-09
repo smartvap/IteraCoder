@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.retrieval.mapper.RcagentRetrievalLogMapper">
+
+    <!-- 检索质量日志分页（接口2）：由 MyBatis-Plus PaginationInnerInterceptor 自动分页，SQL 不写 limit -->
+    <select id="selectPageLogs" resultType="com.agenthub.ai.rcagent.retrieval.entity.RcagentRetrievalLog">
+        SELECT id, ds_id, thread_id, question, query_elements_json, matched_elements_json,
+               missing_elements_json, channel_hit_json, context_item_count, context_token_estimate,
+               cold_start, allow_cold_start, space_used, kb_b_unavailable, rerank_enabled,
+               latency_ms, matched_template_id, matched_flag, create_time
+        FROM rcagent_retrieval_log
+        <where>
+            <if test="dsId != null and dsId != ''">
+                AND ds_id = #{dsId}
+            </if>
+            <if test="threadId != null and threadId != ''">
+                AND thread_id = #{threadId}
+            </if>
+            <if test="coldStart != null">
+                AND cold_start = #{coldStart}
+            </if>
+            <if test="startTime != null">
+                AND create_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+                AND create_time &lt;= #{endTime}
+            </if>
+        </where>
+        ORDER BY create_time DESC, id DESC
+    </select>
+
+    <!-- 检索质量总览聚合（接口3）：按 ds_id/时间统计总次数、冷启动率、平均耗时、平均上下文、B 降级率 -->
+    <select id="selectStatsOverview" resultType="com.agenthub.ai.rcagent.retrieval.vo.RetrievalStatsOverviewVO">
+        SELECT COUNT(*)                         AS total_search,
+               COALESCE(SUM(cold_start), 0)     AS cold_start_count,
+               ROUND(COALESCE(SUM(cold_start), 0) * 1.0 / COUNT(*), 2) AS cold_start_rate,
+               ROUND(COALESCE(AVG(latency_ms), 0))  AS avg_latency_ms,
+               ROUND(COALESCE(AVG(context_item_count), 0), 2) AS avg_context_items,
+               ROUND(COALESCE(SUM(kb_b_unavailable), 0) * 1.0 / COUNT(*), 2) AS kb_b_degrade_rate
+        FROM rcagent_retrieval_log
+        <where>
+            <if test="dsId != null and dsId != ''">
+                AND ds_id = #{dsId}
+            </if>
+            <if test="startTime != null">
+                AND create_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+                AND create_time &lt;= #{endTime}
+            </if>
+        </where>
+    </select>
+
+    <!-- 检索质量按日/周聚合明细（接口3）：bucket 由调用方传 granularity 决定 day/week -->
+    <select id="selectStatsDaily" resultType="com.agenthub.ai.rcagent.retrieval.vo.RetrievalDailyStatVO">
+        SELECT
+        <choose>
+            <when test="granularity == 'week'">
+                DATE_FORMAT(create_time, '%x-W%v') AS bucket
+            </when>
+            <otherwise>
+                DATE_FORMAT(create_time, '%Y-%m-%d') AS bucket
+            </otherwise>
+        </choose>
+        ,
+               COUNT(*) AS search_count,
+               COALESCE(SUM(cold_start), 0) AS cold_start_count,
+               ROUND(COALESCE(AVG(latency_ms), 0)) AS avg_latency_ms
+        FROM rcagent_retrieval_log
+        <where>
+            <if test="dsId != null and dsId != ''">
+                AND ds_id = #{dsId}
+            </if>
+            <if test="startTime != null">
+                AND create_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+                AND create_time &lt;= #{endTime}
+            </if>
+        </where>
+        GROUP BY bucket
+        ORDER BY bucket ASC
+    </select>
+
+</mapper>

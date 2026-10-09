@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.attribution.mapper.RcagentAttributionNodeMapper">
+
+    <!-- 按任务读取下钻树（ROOT → GROUP_DRILL 层序） -->
+    <select id="selectByTaskOrdered" resultType="com.agenthub.ai.rcagent.attribution.entity.RcagentAttributionNode">
+        SELECT id, node_id, task_id, layer, dimension, dimension_label, node_type,
+               parent_node_id, dimension_value, compare_summary_json, query_ids, factor_ids,
+               drill_status, sort_order, create_time, update_time
+        FROM rcagent_attribution_node
+        WHERE task_id = #{taskId} AND is_deleted = 0
+        ORDER BY layer ASC, sort_order ASC, id ASC
+    </select>
+</mapper>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.attribution.mapper.RcagentAttributionFactorMapper">
+
+    <!-- 按任务读取全部候选因子（rank 升序） -->
+    <select id="selectByTaskOrdered" resultType="com.agenthub.ai.rcagent.attribution.entity.RcagentAttributionFactor">
+        SELECT id, factor_id, task_id, node_id, factor_type, dimension, dimension_label,
+               segment_key, segment_value, cur_value, base_value, delta_value, delta_ratio,
+               contribution, contribution_ratio, cur_share, base_share, segment_change,
+               is_main, rank, confidence, hypothesis, evidence_query_ids, sensitive_flag,
+               status, create_time, update_time
+        FROM rcagent_attribution_factor
+        WHERE task_id = #{taskId} AND is_deleted = 0
+        ORDER BY node_id ASC, rank ASC, id ASC
+    </select>
+
+    <!-- 按节点读取因子 -->
+    <select id="selectByNodeOrdered" resultType="com.agenthub.ai.rcagent.attribution.entity.RcagentAttributionFactor">
+        SELECT id, factor_id, task_id, node_id, factor_type, dimension, dimension_label,
+               segment_key, segment_value, cur_value, base_value, delta_value, delta_ratio,
+               contribution, contribution_ratio, cur_share, base_share, segment_change,
+               is_main, rank, confidence, hypothesis, evidence_query_ids, sensitive_flag,
+               status, create_time, update_time
+        FROM rcagent_attribution_factor
+        WHERE node_id = #{nodeId} AND is_deleted = 0
+        ORDER BY rank ASC, id ASC
+    </select>
+</mapper>

@@ -80,6 +80,7 @@ public class DsConfigManageService {
     private final DsProperties properties;
     private final com.agenthub.ai.datasource.adapter.DsConfigHealthAdapter healthAdapter;
     private final DataSourceRegistry dataSourceRegistry;
+    private final com.agenthub.ai.datasource.adapter.KbAutoTaskRegistrar kbAutoTaskRegistrar;
 
     public DsConfigManageService(DsConfigManageMapper configManageMapper,
                                  DsConfigAdminMapper adminMapper,
@@ -89,7 +90,8 @@ public class DsConfigManageService {
                                  SpaceLinker spaceLinker,
                                  DsProperties properties,
                                  com.agenthub.ai.datasource.adapter.DsConfigHealthAdapter healthAdapter,
-                                 DataSourceRegistry dataSourceRegistry) {
+                                 DataSourceRegistry dataSourceRegistry,
+                                 com.agenthub.ai.datasource.adapter.KbAutoTaskRegistrar kbAutoTaskRegistrar) {
         this.configManageMapper = configManageMapper;
         this.adminMapper = adminMapper;
         this.healthMapper = healthMapper;
@@ -99,6 +101,7 @@ public class DsConfigManageService {
         this.properties = properties;
         this.healthAdapter = healthAdapter;
         this.dataSourceRegistry = dataSourceRegistry;
+        this.kbAutoTaskRegistrar = kbAutoTaskRegistrar;
     }
 
     /**
@@ -377,6 +380,8 @@ public class DsConfigManageService {
                 null, "SUCCESS", null);
         // 启用后失效运行时缓存，保证下次 resolve 按最新 status/配置重建连接池
         invalidateRuntimeCache(dsId);
+        // [ADDED] 采集任务兜底登记 + 立即触发（非致命：内部捕获全部异常，不影响 enable 主链路）
+        kbAutoTaskRegistrar.registerAndTriggerAfterEnable(dsId);
         DsStateResultVO vo = new DsStateResultVO();
         vo.setDsId(dsId);
         vo.setManageState(DsManageState.ACTIVE.name());

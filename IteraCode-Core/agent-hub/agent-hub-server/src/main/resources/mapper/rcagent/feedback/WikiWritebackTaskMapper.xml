@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.feedback.mapper.WikiWritebackTaskMapper">
+
+    <!-- 重试扫描：PENDING/FAILED 且 next_retry_time 为空或已到点（指数退避） -->
+    <select id="selectRetryTasks" resultType="com.agenthub.ai.rcagent.feedback.entity.WikiWritebackTask">
+        SELECT id, ds_id, feedback_id, review_task_id, suggestion_no, wiki_space, page_path,
+               page_title, page_content, page_type, status, remote_task_id, retry_count,
+               last_error, next_retry_time, create_time, update_time
+        FROM fb_wiki_writeback
+        WHERE status IN ('PENDING', 'FAILED')
+          AND (next_retry_time IS NULL OR next_retry_time &lt;= #{now})
+        ORDER BY retry_count ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <!-- RUNNING 任务：轮询远端 llm-wiki 任务状态（remote_task_id 非空） -->
+    <select id="selectRunningRemoteTasks" resultType="com.agenthub.ai.rcagent.feedback.entity.WikiWritebackTask">
+        SELECT id, ds_id, feedback_id, review_task_id, suggestion_no, wiki_space, page_path,
+               page_title, page_content, page_type, status, remote_task_id, retry_count,
+               last_error, next_retry_time, create_time, update_time
+        FROM fb_wiki_writeback
+        WHERE status = 'RUNNING'
+          AND remote_task_id IS NOT NULL
+          AND remote_task_id != ''
+        ORDER BY id ASC
+        LIMIT #{limit}
+    </select>
+
+    <!-- B 库出站状态分布（接口4 writebackCount） -->
+    <select id="countWikiByStatus" resultType="com.agenthub.ai.rcagent.feedback.dto.FeedbackCountItem">
+        SELECT status AS group_key, COUNT(*) AS cnt
+        FROM fb_wiki_writeback
+        WHERE ds_id = #{dsId}
+        GROUP BY status
+    </select>
+
+    <!-- 最新一条出站任务（详情页展示 B 库进度） -->
+    <select id="selectLatestByFeedback" resultType="com.agenthub.ai.rcagent.feedback.entity.WikiWritebackTask">
+        SELECT id, ds_id, feedback_id, review_task_id, suggestion_no, wiki_space, page_path,
+               page_title, page_content, page_type, status, remote_task_id, retry_count,
+               last_error, next_retry_time, create_time, update_time
+        FROM fb_wiki_writeback
+        WHERE ds_id = #{dsId}
+          AND feedback_id = #{feedbackId}
+        ORDER BY update_time DESC
+        LIMIT 1
+    </select>
+
+    <!-- 置 RUNNING -->
+    <update id="markRunning">
+        UPDATE fb_wiki_writeback
+        SET status = 'RUNNING', update_time = #{now}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 记录远端 sync 任务 id（保持 RUNNING 由调度器轮询） -->
+    <update id="markRemoteTask">
+        UPDATE fb_wiki_writeback
+        SET remote_task_id = #{remoteTaskId}, update_time = #{now}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 置 SUCCESS -->
+    <update id="markSuccess">
+        UPDATE fb_wiki_writeback
+        SET status = 'SUCCESS', last_error = NULL, update_time = #{now}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 置 FAILED（可重试） -->
+    <update id="markFailed">
+        UPDATE fb_wiki_writeback
+        SET status = 'FAILED', last_error = #{lastError},
+            next_retry_time = #{nextRetryTime}, update_time = #{now}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 置 PENDING（重试扫描复用） -->
+    <update id="markPending">
+        UPDATE fb_wiki_writeback
+        SET status = 'PENDING', retry_count = #{retryCount},
+            next_retry_time = #{nextRetryTime}, update_time = #{now}
+        WHERE id = #{id}
+    </update>
+
+</mapper>

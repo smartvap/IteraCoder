@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.kb.mapper.KbSqlTemplateMapper">
+
+    <!-- 结构变更/软删除反查：involved_tables JSON 中包含指定表名的非 deprecated 模板 -->
+    <select id="selectImpactedByTable" resultType="com.agenthub.ai.rcagent.kb.entity.KbSqlTemplate">
+        SELECT id, ds_id, db_type, biz_action, normalized_sql, sql_fingerprint,
+               involved_tables, sample_questions, freq, accuracy, knowledge_source,
+               confidence, verified, evidence, status, version, hit_count, error_count,
+               create_time, update_time
+        FROM kb_sql_template
+        WHERE ds_id = #{dsId}
+          AND status &lt;&gt; 'deprecated'
+          AND involved_tables LIKE CONCAT('%', '"', #{tableName}, '"', '%')
+        ORDER BY confidence DESC
+    </select>
+
+    <!-- SQL 模板检索召回（接口21）：默认高置信 verified=1 AND active -->
+    <select id="selectRetrievalTemplates" resultType="com.agenthub.ai.rcagent.kb.entity.KbSqlTemplate">
+        SELECT id, ds_id, db_type, biz_action, normalized_sql, sql_fingerprint,
+               involved_tables, sample_questions, freq, accuracy, knowledge_source,
+               confidence, verified, evidence, status, version, hit_count, error_count,
+               create_time, update_time
+        FROM kb_sql_template
+        WHERE ds_id = #{dsId}
+          AND verified = 1 AND status = 'active'
+        <if test="bizAction != null and bizAction != ''">
+            AND biz_action LIKE CONCAT(#{bizAction}, '%')
+        </if>
+        <if test="questionKeyword != null and questionKeyword != ''">
+            AND (sample_questions LIKE CONCAT('%', #{questionKeyword}, '%')
+                 OR normalized_sql LIKE CONCAT('%', #{questionKeyword}, '%')
+                 OR biz_action LIKE CONCAT('%', #{questionKeyword}, '%'))
+        </if>
+        <if test="tableName != null and tableName != ''">
+            AND involved_tables LIKE CONCAT('%', '"', #{tableName}, '"', '%')
+        </if>
+        <if test="minConfidence != null">
+            AND confidence &gt;= #{minConfidence}
+        </if>
+        ORDER BY confidence DESC, freq DESC, create_time DESC
+        LIMIT #{topK}
+    </select>
+
+</mapper>

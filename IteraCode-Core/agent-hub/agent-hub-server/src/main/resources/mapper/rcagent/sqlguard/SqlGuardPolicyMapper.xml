@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.sqlguard.mapper.SqlGuardPolicyMapper">
+
+    <!-- 按作用域+ds_id 精确查询（GLOBAL 行 ds_id 为空/NULL，DS 行按 ds_id） -->
+    <select id="selectByScopeAndDs" resultType="com.agenthub.ai.rcagent.sqlguard.entity.SqlGuardPolicy">
+        SELECT id, policy_scope, ds_id, policy_name, max_rows_default, max_seconds_default,
+               select_star_policy, block_enabled, sensitive_policy, sensitive_source,
+               low_auto_enabled, mvp_review_all, high_review_required, repair_max_rounds,
+               dialect_whitelist, config_version, remark, create_time, update_time, is_deleted
+        FROM sql_guard_policy
+        WHERE is_deleted = 0
+          AND policy_scope = #{policyScope}
+          AND (ds_id = #{dsId} OR (#{dsId} IS NULL AND ds_id IS NULL))
+        LIMIT 1
+    </select>
+
+    <!-- 策略分页：由 MyBatis-Plus PaginationInnerInterceptor 自动分页，SQL 不写 limit -->
+    <select id="selectPagePolicies" resultType="com.agenthub.ai.rcagent.sqlguard.entity.SqlGuardPolicy">
+        SELECT id, policy_scope, ds_id, policy_name, max_rows_default, max_seconds_default,
+               select_star_policy, block_enabled, sensitive_policy, sensitive_source,
+               low_auto_enabled, mvp_review_all, high_review_required, repair_max_rounds,
+               dialect_whitelist, config_version, remark, create_time, update_time, is_deleted
+        FROM sql_guard_policy
+        WHERE is_deleted = 0
+        <if test="policyScope != null and policyScope != ''">
+            AND policy_scope = #{policyScope}
+        </if>
+        <if test="dsId != null and dsId != ''">
+            AND ds_id = #{dsId}
+        </if>
+        ORDER BY update_time DESC, id DESC
+    </select>
+
+    <!-- 策略计数（非 MP 分页场景兜底） -->
+    <select id="countPolicies" resultType="long">
+        SELECT COUNT(*)
+        FROM sql_guard_policy
+        WHERE is_deleted = 0
+        <if test="policyScope != null and policyScope != ''">
+            AND policy_scope = #{policyScope}
+        </if>
+        <if test="dsId != null and dsId != ''">
+            AND ds_id = #{dsId}
+        </if>
+    </select>
+
+</mapper>

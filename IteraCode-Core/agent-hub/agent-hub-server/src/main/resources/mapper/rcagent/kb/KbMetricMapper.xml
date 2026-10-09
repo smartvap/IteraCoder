@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.kb.mapper.KbMetricMapper">
+
+    <!-- 语义检索-指标召回（接口24）：默认高置信 -->
+    <select id="selectRetrievalMetrics" resultType="com.agenthub.ai.rcagent.kb.entity.KbMetric">
+        SELECT id, ds_id, metric_name, definition, calculation_rule, related_tables,
+               related_columns, space_name, knowledge_source, confidence, verified,
+               evidence, status, version, hit_count, error_count, create_time, update_time
+        FROM kb_metric
+        WHERE ds_id = #{dsId}
+          AND verified = 1 AND status = 'active'
+        <if test="keyword != null and keyword != ''">
+            AND (metric_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR definition LIKE CONCAT('%', #{keyword}, '%')
+                 OR related_tables LIKE CONCAT('%', '"', #{keyword}, '"', '%'))
+        </if>
+        <if test="spaceName != null and spaceName != ''">
+            AND space_name = #{spaceName}
+        </if>
+        ORDER BY confidence DESC, create_time DESC
+        LIMIT #{topK}
+    </select>
+
+</mapper>

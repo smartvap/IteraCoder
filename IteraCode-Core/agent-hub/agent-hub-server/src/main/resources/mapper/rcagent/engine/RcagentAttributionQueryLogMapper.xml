@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.attribution.mapper.RcagentAttributionQueryLogMapper">
+
+    <!-- 按任务读取归因查询审计 -->
+    <select id="selectByTaskOrdered" resultType="com.agenthub.ai.rcagent.attribution.entity.RcagentAttributionQueryLog">
+        SELECT id, query_id, ds_id, task_id, node_id, query_type, sql_text, sql_abstract,
+               involved_tables, risk_level, verdict, review_status, executed, result_json,
+               result_check_json, fix_suggestion, err_code, err_msg, cost_ms, create_time, update_time
+        FROM rcagent_attribution_query_log
+        WHERE task_id = #{taskId} AND is_deleted = 0
+        ORDER BY create_time ASC, id ASC
+    </select>
+
+    <!-- 归因查询待审列表（审核台）：任务处于 QUERY_REVIEWING 且 review_status=NONE -->
+    <select id="selectReviewPendingQueries" resultType="com.agenthub.ai.rcagent.attribution.entity.RcagentAttributionQueryLog">
+        SELECT q.id, q.query_id, q.ds_id, q.task_id, q.node_id, q.query_type, q.sql_text, q.sql_abstract,
+               q.involved_tables, q.risk_level, q.verdict, q.review_status, q.executed, q.result_json,
+               q.result_check_json, q.fix_suggestion, q.err_code, q.err_msg, q.cost_ms, q.create_time, q.update_time
+        FROM rcagent_attribution_query_log q
+        INNER JOIN rcagent_attribution_task t ON q.task_id = t.task_id
+        WHERE q.is_deleted = 0
+          AND t.is_deleted = 0
+          AND q.review_status = 'NONE'
+          AND t.status = 'QUERY_REVIEWING'
+          AND t.review_state = 'QUERY_REVIEWING'
+          <if test="dsId != null and dsId != ''">
+              AND t.ds_id = #{dsId}
+          </if>
+          <if test="taskId != null and taskId != ''">
+              AND q.task_id = #{taskId}
+          </if>
+        ORDER BY q.create_time ASC, q.id ASC
+    </select>
+</mapper>

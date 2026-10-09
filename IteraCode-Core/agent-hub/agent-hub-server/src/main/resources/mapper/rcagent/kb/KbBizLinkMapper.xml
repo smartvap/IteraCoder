@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.kb.mapper.KbBizLinkMapper">
+
+    <!-- 结构变更/软删除反查：related_tables JSON 中包含指定表名的非 deprecated 链路 -->
+    <select id="selectImpactedByTable" resultType="com.agenthub.ai.rcagent.kb.entity.KbBizLink">
+        SELECT id, ds_id, biz_operation, service_class, dao_class, sql_template_id,
+               related_tables, knowledge_source, confidence, verified, evidence, status,
+               version, hit_count, error_count, create_time, update_time
+        FROM kb_biz_link
+        WHERE ds_id = #{dsId}
+          AND status &lt;&gt; 'deprecated'
+          AND related_tables LIKE CONCAT('%', '"', #{tableName}, '"', '%')
+        ORDER BY confidence DESC
+    </select>
+
+    <!-- 业务链路检索召回（接口22）：默认高置信 verified=1 AND active -->
+    <select id="selectRetrievalLinks" resultType="com.agenthub.ai.rcagent.kb.entity.KbBizLink">
+        SELECT id, ds_id, biz_operation, service_class, dao_class, sql_template_id,
+               related_tables, knowledge_source, confidence, verified, evidence, status,
+               version, hit_count, error_count, create_time, update_time
+        FROM kb_biz_link
+        WHERE ds_id = #{dsId}
+          AND verified = 1 AND status = 'active'
+        <if test="operationKeyword != null and operationKeyword != ''">
+            AND biz_operation LIKE CONCAT('%', #{operationKeyword}, '%')
+        </if>
+        <if test="serviceClass != null and serviceClass != ''">
+            AND service_class LIKE CONCAT(#{serviceClass}, '%')
+        </if>
+        <if test="tableName != null and tableName != ''">
+            AND related_tables LIKE CONCAT('%', '"', #{tableName}, '"', '%')
+        </if>
+        ORDER BY confidence DESC, create_time DESC
+        LIMIT #{topK}
+    </select>
+
+</mapper>

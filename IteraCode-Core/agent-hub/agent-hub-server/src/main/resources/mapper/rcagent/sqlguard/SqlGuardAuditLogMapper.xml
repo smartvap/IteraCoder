@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.sqlguard.mapper.SqlGuardAuditLogMapper">
+
+    <!-- 审计流水分页：由 MyBatis-Plus PaginationInnerInterceptor 自动分页（契约 HTTP 4 使用 MP 分页） -->
+    <select id="selectPageAudits" resultType="com.agenthub.ai.rcagent.sqlguard.entity.SqlGuardAuditLog">
+        SELECT id, ds_id, thread_id, sql_fingerprint, sql_abstract, statement_type, db_type,
+               involved_tables, risk_level, verdict, block_reason,
+               level_l1_result, level_l2_result, level_l3_result, level_l4_result, level_l5_result,
+               levels_summary, fix_suggestion, cost_ms, result_row_count, truncated, guard_status,
+               create_time, update_time, is_deleted
+        FROM sql_guard_audit_log
+        WHERE is_deleted = 0
+        <if test="dsId != null and dsId != ''">
+            AND ds_id = #{dsId}
+        </if>
+        <if test="threadId != null and threadId != ''">
+            AND thread_id = #{threadId}
+        </if>
+        <if test="riskLevel != null and riskLevel != ''">
+            AND risk_level = #{riskLevel}
+        </if>
+        <if test="verdict != null and verdict != ''">
+            AND verdict = #{verdict}
+        </if>
+        <if test="guardStatus != null and guardStatus != ''">
+            AND guard_status = #{guardStatus}
+        </if>
+        <if test="startDate != null">
+            AND create_time &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND create_time &lt;= #{endDate}
+        </if>
+        ORDER BY create_time DESC, id DESC
+    </select>
+
+    <!-- 审计计数（非 MP 分页场景兜底） -->
+    <select id="countAudits" resultType="long">
+        SELECT COUNT(*)
+        FROM sql_guard_audit_log
+        WHERE is_deleted = 0
+        <if test="dsId != null and dsId != ''">
+            AND ds_id = #{dsId}
+        </if>
+        <if test="threadId != null and threadId != ''">
+            AND thread_id = #{threadId}
+        </if>
+        <if test="riskLevel != null and riskLevel != ''">
+            AND risk_level = #{riskLevel}
+        </if>
+        <if test="verdict != null and verdict != ''">
+            AND verdict = #{verdict}
+        </if>
+        <if test="guardStatus != null and guardStatus != ''">
+            AND guard_status = #{guardStatus}
+        </if>
+        <if test="startDate != null">
+            AND create_time &gt;= #{startDate}
+        </if>
+        <if test="endDate != null">
+            AND create_time &lt;= #{endDate}
+        </if>
+    </select>
+
+</mapper>

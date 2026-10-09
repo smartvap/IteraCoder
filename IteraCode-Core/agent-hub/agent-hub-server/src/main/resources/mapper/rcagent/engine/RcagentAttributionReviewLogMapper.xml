@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.attribution.mapper.RcagentAttributionReviewLogMapper">
+
+    <!-- 已审核留痕分页（审核台历史）：join task 以支持 ds_id/指标过滤；MyBatis-Plus 自动分页 -->
+    <select id="selectPageReviews" resultType="com.agenthub.ai.rcagent.attribution.entity.RcagentAttributionReviewLog">
+        SELECT r.id, r.review_id, r.task_id, r.thread_id, r.review_object, r.query_id,
+               r.risk_level, r.decision, r.comment, r.reviewer_id, r.review_round,
+               r.create_time, r.update_time, r.is_deleted
+        FROM rcagent_attribution_review_log r
+        INNER JOIN rcagent_attribution_task t ON r.task_id = t.task_id
+        <where>
+            r.is_deleted = 0
+            AND t.is_deleted = 0
+            <if test="q != null">
+                <if test="q.dsId != null and q.dsId != ''">
+                    AND t.ds_id = #{q.dsId}
+                </if>
+                <if test="q.taskId != null and q.taskId != ''">
+                    AND r.task_id = #{q.taskId}
+                </if>
+                <if test="q.reviewObject != null and q.reviewObject != ''">
+                    AND r.review_object = #{q.reviewObject}
+                </if>
+                <if test="q.decision != null and q.decision != ''">
+                    AND r.decision = #{q.decision}
+                </if>
+            </if>
+        </where>
+        ORDER BY r.create_time DESC, r.id DESC
+    </select>
+</mapper>

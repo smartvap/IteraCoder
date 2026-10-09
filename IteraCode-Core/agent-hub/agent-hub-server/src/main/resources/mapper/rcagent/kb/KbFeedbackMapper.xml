@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.kb.mapper.KbFeedbackMapper">
+
+    <!-- 反馈分页（接口26）：由 MyBatis-Plus PaginationInnerInterceptor 自动分页，SQL 不写 limit -->
+    <select id="selectPageFeedbacks" resultType="com.agenthub.ai.rcagent.kb.entity.KbFeedback">
+        SELECT id, ds_id, session_id, question, generated_sql, modified_sql, change_type,
+               feedback_type, user_comment, review_conclusion, status, create_time, update_time
+        FROM kb_feedback
+        WHERE ds_id = #{dsId}
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="sessionId != null and sessionId != ''">
+            AND session_id = #{sessionId}
+        </if>
+        <if test="startTime != null">
+            AND create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

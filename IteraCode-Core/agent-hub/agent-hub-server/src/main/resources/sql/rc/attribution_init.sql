@@ -1,0 +1,163 @@
+-- ============================================================
+-- rca-attribution-workflow（module-007）归因模块建表脚本（新增独立脚本，不改写存量 init.sql）
+-- 表：rcagent_attribution_task / node / factor / query_log / review_log（IF NOT EXISTS 幂等）
+-- 对齐：.aspirecode/sdd/rca1.0.0.0/rca-attribution-workflow/data-model.md §6 DDL
+-- 说明：5 张表已由 db-operator 在 ai_server 创建（含修复后 query_log 列），本脚本保证幂等可重复执行。
+-- ============================================================
+
+-- 归因任务表
+CREATE TABLE IF NOT EXISTS `rcagent_attribution_task` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `task_id` VARCHAR(64) NOT NULL COMMENT '归因任务业务ID',
+  `thread_id` VARCHAR(64) DEFAULT NULL COMMENT '关联工作流会话thread_id',
+  `parent_task_id` VARCHAR(64) DEFAULT NULL COMMENT '追问链父任务task_id',
+  `ds_id` VARCHAR(64) NOT NULL COMMENT '数据源实例ID',
+  `metric_name` VARCHAR(128) NOT NULL COMMENT '指标名',
+  `kb_metric_id` BIGINT DEFAULT NULL COMMENT '命中kb_metric.id',
+  `metric_definition_verified` TINYINT NOT NULL DEFAULT 0 COMMENT '是否有verified/active口径定义',
+  `metric_knowledge_json` TEXT COMMENT '指标口径快照JSON',
+  `trigger_type` VARCHAR(32) NOT NULL COMMENT '触发方式: METRIC_ANOMALY/USER_FOLLOW_UP',
+  `question` TEXT COMMENT '用户原始追问/主问题',
+  `query_context_json` TEXT COMMENT '追问上下文JSON',
+  `time_range_json` TEXT COMMENT '时间窗JSON',
+  `compare_type` VARCHAR(16) NOT NULL DEFAULT 'MOM' COMMENT '对比方式: MOM/YOY/CUSTOM',
+  `status` VARCHAR(32) NOT NULL COMMENT '任务状态: DETECTING/EXPLAINING/DRILLING/EXECUTING/CONCLUDING/QUERY_REVIEWING/CONCLUSION_REVIEWING/FINISHED/FAILED/CANCELLED',
+  `review_state` VARCHAR(32) NOT NULL DEFAULT 'NONE' COMMENT '审核阶段: NONE/QUERY_REVIEWING/CONCLUSION_REVIEWING',
+  `anomaly_json` TEXT COMMENT '异常识别结果快照JSON',
+  `drill_path_json` TEXT COMMENT '已下钻路径JSON',
+  `drill_depth` INT NOT NULL DEFAULT 0 COMMENT '当前下钻深度',
+  `query_count` INT NOT NULL DEFAULT 0 COMMENT '已生成归因查询次数',
+  `quality_flags_json` TEXT COMMENT '口径/数据质量信号JSON',
+  `conclusion_json` TEXT COMMENT '结构化结论JSON',
+  `conclusion_summary` TEXT COMMENT '自然语言结论摘要',
+  `confidence` DECIMAL(5,4) DEFAULT NULL COMMENT '归因结论置信度',
+  `result_status` VARCHAR(32) DEFAULT NULL COMMENT '结果状态: STABLE/CONCLUSION/DATA_ISSUE/DEGRADED/REJECTED_RETRY',
+  `sensitive_flag` TINYINT NOT NULL DEFAULT 0 COMMENT '是否命中敏感归因',
+  `error_msg` VARCHAR(500) DEFAULT NULL COMMENT '失败信息',
+  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `is_deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除标记',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_task_id` (`task_id`),
+  KEY `idx_thread_id` (`thread_id`),
+  KEY `idx_ds_status_time` (`ds_id`, `status`, `create_time`),
+  KEY `idx_parent_task_id` (`parent_task_id`),
+  KEY `idx_metric` (`ds_id`, `metric_name`, `create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='归因任务表(rca-attribution-workflow)';
+
+-- 下钻节点表
+CREATE TABLE IF NOT EXISTS `rcagent_attribution_node` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `node_id` VARCHAR(64) NOT NULL COMMENT '下钻节点业务ID',
+  `task_id` VARCHAR(64) NOT NULL COMMENT '归属归因任务',
+  `layer` INT NOT NULL DEFAULT 1 COMMENT '下钻层级',
+  `dimension` VARCHAR(128) NOT NULL COMMENT '下钻维度',
+  `dimension_label` VARCHAR(128) DEFAULT NULL COMMENT '维度展示名',
+  `node_type` VARCHAR(32) NOT NULL DEFAULT 'GROUP_DRILL' COMMENT '节点类型: ROOT/GROUP_DRILL/CROSS_DRILL/QUALITY_CHECK',
+  `parent_node_id` VARCHAR(64) DEFAULT NULL COMMENT '上一层节点',
+  `dimension_value` VARCHAR(255) DEFAULT NULL COMMENT '聚焦子群值',
+  `compare_summary_json` TEXT COMMENT '本层对比摘要JSON',
+  `query_ids` TEXT COMMENT '证据查询id数组JSON',
+  `factor_ids` TEXT COMMENT '候选因子id数组JSON',
+  `drill_status` VARCHAR(32) NOT NULL DEFAULT 'EXECUTED' COMMENT '节点执行状态: EXECUTED/SKIPPED/REVIEWING/FAILED',
+  `sort_order` INT NOT NULL DEFAULT 0 COMMENT '展示顺序',
+  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `is_deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除标记',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_node_id` (`node_id`),
+  KEY `idx_task_layer` (`task_id`, `layer`),
+  KEY `idx_task_dimension` (`task_id`, `dimension`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='归因下钻节点表';
+
+-- 候选因子表
+CREATE TABLE IF NOT EXISTS `rcagent_attribution_factor` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `factor_id` VARCHAR(64) NOT NULL COMMENT '因子业务ID',
+  `task_id` VARCHAR(64) NOT NULL COMMENT '归属归因任务',
+  `node_id` VARCHAR(64) NOT NULL COMMENT '归属下钻节点',
+  `factor_type` VARCHAR(32) NOT NULL DEFAULT 'SEGMENT_CONTRIB' COMMENT '因子类型',
+  `dimension` VARCHAR(128) NOT NULL COMMENT '维度名',
+  `dimension_label` VARCHAR(128) DEFAULT NULL COMMENT '维度展示名',
+  `segment_key` VARCHAR(255) NOT NULL COMMENT '子群键',
+  `segment_value` VARCHAR(255) NOT NULL COMMENT '子群展示值',
+  `cur_value` DECIMAL(24,4) DEFAULT NULL COMMENT '本期子群值',
+  `base_value` DECIMAL(24,4) DEFAULT NULL COMMENT '基期子群值',
+  `delta_value` DECIMAL(24,4) DEFAULT NULL COMMENT '子群变化量',
+  `delta_ratio` DECIMAL(12,4) DEFAULT NULL COMMENT '子群变化率%',
+  `contribution` DECIMAL(24,4) DEFAULT NULL COMMENT '对总变化贡献量',
+  `contribution_ratio` DECIMAL(8,4) DEFAULT NULL COMMENT '贡献占比%',
+  `cur_share` DECIMAL(8,4) DEFAULT NULL COMMENT '本期占比%',
+  `base_share` DECIMAL(8,4) DEFAULT NULL COMMENT '基期占比%',
+  `segment_change` VARCHAR(16) DEFAULT NULL COMMENT '变化类型: INCREASE/DECREASE/NEW/DISAPPEARED/STABLE',
+  `is_main` TINYINT NOT NULL DEFAULT 0 COMMENT '是否主因',
+  `rank` INT NOT NULL DEFAULT 0 COMMENT '贡献度排序位',
+  `confidence` DECIMAL(5,4) DEFAULT NULL COMMENT '因子置信度',
+  `hypothesis` TEXT COMMENT '假设解释(非因果断言)',
+  `evidence_query_ids` TEXT COMMENT '支撑证据查询id数组JSON',
+  `sensitive_flag` TINYINT NOT NULL DEFAULT 0 COMMENT '是否敏感因子',
+  `status` VARCHAR(32) NOT NULL DEFAULT 'CANDIDATE' COMMENT '因子状态: CANDIDATE/MAIN_FACTOR/SECONDARY/REJECTED',
+  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `is_deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除标记',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_factor_id` (`factor_id`),
+  KEY `idx_task_node_rank` (`task_id`, `node_id`, `rank`),
+  KEY `idx_task_main` (`task_id`, `is_main`, `status`),
+  KEY `idx_ds_dimension` (`task_id`, `dimension`, `segment_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='归因候选因子表';
+
+-- 归因查询日志表
+CREATE TABLE IF NOT EXISTS `rcagent_attribution_query_log` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `query_id` VARCHAR(64) NOT NULL COMMENT '归因查询业务ID',
+  `ds_id` VARCHAR(64) NOT NULL COMMENT '数据源实例ID',
+  `task_id` VARCHAR(64) NOT NULL COMMENT '归属归因任务',
+  `node_id` VARCHAR(64) NOT NULL COMMENT '归属下钻节点',
+  `query_type` VARCHAR(32) NOT NULL COMMENT '查询类型: OVERALL/TREND/BASELINE/GROUP_CUR/GROUP_BASE/CROSS_GROUP/QUALITY_PROBE',
+  `sql_text` TEXT NOT NULL COMMENT '归因SQL原文(受控存储)',
+  `sql_abstract` VARCHAR(2000) NOT NULL COMMENT 'SQL脱敏抽象',
+  `involved_tables` TEXT COMMENT '涉及表JSON数组',
+  `risk_level` VARCHAR(16) DEFAULT NULL COMMENT '风险分级: BLOCK/LOW/MEDIUM/HIGH',
+  `verdict` VARCHAR(16) DEFAULT NULL COMMENT '判定: ALLOW/REVIEW/BLOCK',
+  `review_status` VARCHAR(16) NOT NULL DEFAULT 'NONE' COMMENT '人工审核状态: NONE/APPROVED/REJECTED',
+  `executed` TINYINT NOT NULL DEFAULT 0 COMMENT '是否已只读执行',
+  `result_json` TEXT COMMENT '执行结果快照JSON',
+  `result_check_json` TEXT COMMENT 'L5结果合理性信号JSON',
+  `fix_suggestion` VARCHAR(500) DEFAULT NULL COMMENT '验证失败修复建议',
+  `err_code` VARCHAR(32) DEFAULT NULL COMMENT '失败错误码',
+  `err_msg` VARCHAR(500) DEFAULT NULL COMMENT '失败信息摘要',
+  `cost_ms` INT DEFAULT NULL COMMENT '执行耗时',
+  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `is_deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除标记',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_query_id` (`query_id`),
+  KEY `idx_task_node` (`task_id`, `node_id`),
+  KEY `idx_task_type` (`task_id`, `query_type`),
+  KEY `idx_review` (`task_id`, `review_status`),
+  KEY `idx_ds_time` (`ds_id`, `create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='归因查询日志表';
+
+-- 归因审核留痕表
+CREATE TABLE IF NOT EXISTS `rcagent_attribution_review_log` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `review_id` VARCHAR(64) NOT NULL COMMENT '审核记录业务ID',
+  `task_id` VARCHAR(64) NOT NULL COMMENT '归属归因任务',
+  `thread_id` VARCHAR(64) DEFAULT NULL COMMENT '关联工作流会话',
+  `review_object` VARCHAR(16) NOT NULL COMMENT '审核对象: QUERY/CONCLUSION',
+  `query_id` VARCHAR(64) DEFAULT NULL COMMENT 'QUERY审核时对应query_id',
+  `risk_level` VARCHAR(16) DEFAULT NULL COMMENT '被审核对象原始风险等级',
+  `decision` VARCHAR(16) NOT NULL COMMENT '审核决策: APPROVE/REJECT',
+  `comment` VARCHAR(1000) DEFAULT NULL COMMENT '审核意见(打回必填)',
+  `reviewer_id` BIGINT NOT NULL COMMENT '审核人ID',
+  `review_round` INT NOT NULL DEFAULT 1 COMMENT '第几轮审核',
+  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `is_deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除标记',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_review_id` (`review_id`),
+  KEY `idx_task_object` (`task_id`, `review_object`, `decision`),
+  KEY `idx_reviewer` (`reviewer_id`, `create_time`),
+  KEY `idx_thread` (`thread_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='归因审核留痕表';

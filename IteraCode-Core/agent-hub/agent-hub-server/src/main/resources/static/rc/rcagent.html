@@ -1,0 +1,1846 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RCAgent 查数归因工作台</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, "Microsoft YaHei", sans-serif;
+            padding: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: #f5f5f5;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .breadcrumb {
+            text-align: center;
+            color: #aaa;
+            font-size: 12px;
+            margin-bottom: 24px;
+        }
+
+        .breadcrumb a {
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        .section {
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+
+        .section h2 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .section h2 .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            font-size: 11px;
+            border-radius: 3px;
+            color: #fff;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        .badge.post { background: #28a745; }
+        .badge.get  { background: #007bff; }
+
+        .form-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+            align-items: center;
+        }
+
+        .form-row:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            font-size: 14px;
+            color: #555;
+            white-space: nowrap;
+            min-width: 70px;
+            text-align: right;
+        }
+
+        input, textarea, select {
+            flex: 1;
+            padding: 8px 12px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: inherit;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 70px;
+        }
+
+        select {
+            cursor: pointer;
+        }
+
+        button {
+            padding: 10px 24px;
+            font-size: 14px;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            white-space: nowrap;
+        }
+
+        button.primary { background-color: #007bff; }
+        button.primary:hover { background-color: #0056b3; }
+        button.success { background-color: #28a745; }
+        button.success:hover { background-color: #1e7e34; }
+        button.warning { background-color: #ffc107; color: #333; }
+        button.warning:hover { background-color: #e0a800; }
+        button.danger  { background-color: #dc3545; }
+        button.danger:hover  { background-color: #bd2130; }
+        button.info    { background-color: #17a2b8; }
+        button.info:hover    { background-color: #117a8b; }
+        button.secondary { background-color: #6c757d; }
+        button.secondary:hover { background-color: #545b62; }
+
+        button:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
+        .btn-row {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .decision-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        #loading {
+            display: none;
+            margin: 16px auto;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result-panel {
+            margin-top: 16px;
+            padding: 14px;
+            border-radius: 6px;
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            font-size: 13px;
+            line-height: 1.7;
+            display: none;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .result-panel.show {
+            display: block;
+        }
+
+        .result-panel.error {
+            background: #fff5f5;
+            border-color: #f5c6cb;
+        }
+
+        .status-tag {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            vertical-align: middle;
+        }
+        .status-RUNNING        { background: #cce5ff; color: #004085; }
+        .status-WAITING_REVIEW { background: #fff3cd; color: #856404; }
+        .status-SENT_BACK      { background: #ffe5cc; color: #8a4b08; }
+        .status-COMPLETED      { background: #d4edda; color: #155724; }
+        .status-TERMINATED     { background: #f8d7da; color: #721c24; }
+        .status-FAILED         { background: #e2e3e5; color: #383d41; }
+
+        /* 风险等级徽标 */
+        .risk-tag {
+            display: inline-block;
+            padding: 1px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: bold;
+            vertical-align: middle;
+        }
+        .risk-LOW    { background: #d4edda; color: #155724; }
+        .risk-MEDIUM { background: #fff3cd; color: #856404; }
+        .risk-HIGH   { background: #ffe5cc; color: #8a4b08; }
+        .risk-BLOCK  { background: #f8d7da; color: #721c24; }
+
+        .kv-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+        }
+        .kv-table th, .kv-table td {
+            text-align: left;
+            padding: 6px 10px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+            vertical-align: top;
+        }
+        .kv-table th {
+            width: 180px;
+            color: #555;
+            font-weight: normal;
+        }
+        .kv-table td {
+            word-break: break-all;
+            color: #333;
+        }
+
+        .code-block {
+            background: #2d2d2d;
+            color: #e0e0e0;
+            padding: 12px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 240px;
+            overflow-y: auto;
+        }
+
+        .tip {
+            font-size: 12px;
+            color: #999;
+            margin-top: 4px;
+        }
+
+        /* 顶部消息横幅（workflow_message） */
+        .msg-banner {
+            display: none;
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            background: #e3f2fd;
+            border: 1px solid #90caf9;
+            color: #1565c0;
+            word-break: break-all;
+        }
+        .msg-banner.show { display: block; }
+        .msg-banner.error { background: #fff5f5; border-color: #f5c6cb; color: #c0392b; }
+
+        /* 进度面板 */
+        .progress-panel {
+            display: none;
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .progress-panel.show { display: block; }
+        .progress-header {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 6px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .progress-thread {
+            font-size: 12px;
+            color: #999;
+            font-weight: normal;
+            margin-left: 8px;
+        }
+        .session-meta {
+            font-size: 12px;
+            color: #777;
+            margin-bottom: 10px;
+            padding: 8px 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+
+        .progress-step {
+            display: flex;
+            align-items: flex-start;
+            padding: 6px 0;
+            font-size: 13px;
+            color: #999;
+            flex-wrap: wrap;
+        }
+        .progress-step .step-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid #ccc;
+            margin-right: 10px;
+            flex-shrink: 0;
+            text-align: center;
+            line-height: 16px;
+            font-size: 10px;
+            margin-top: 2px;
+        }
+        .progress-step.done { color: #28a745; }
+        .progress-step.done .step-icon { background: #28a745; border-color: #28a745; color: #fff; }
+        .progress-step.active { color: #007bff; font-weight: bold; }
+        .progress-step.active .step-icon { border-color: #007bff; animation: pulse 1.5s infinite; }
+        .progress-step .step-name { line-height: 22px; }
+        .step-body {
+            width: 100%;
+            margin-left: 30px;
+            margin-top: 4px;
+            padding: 6px 10px;
+            background: #f8f9fa;
+            border-left: 2px solid #e0e0e0;
+            font-size: 12px;
+            color: #555;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 320px;
+            min-height: 20px;
+            overflow-y: auto;
+            border-radius: 0 4px 4px 0;
+            display: none;
+        }
+        .step-body.visible { display: block; }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(0,123,255,0.4); }
+            50%      { box-shadow: 0 0 0 6px rgba(0,123,255,0); }
+        }
+        @keyframes dotPulse {
+            0%, 20%  { opacity: 0.2; }
+            50%      { opacity: 1; }
+            80%, 100% { opacity: 0.2; }
+        }
+        .thinking-dot { animation: dotPulse 1.2s infinite; }
+        .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+        .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        /* marked 渲染正文样式 */
+        .md-body { line-height: 1.7; }
+        .md-body p { margin: 4px 0; }
+        .md-body h1, .md-body h2, .md-body h3, .md-body h4 {
+            margin: 8px 0 4px;
+            color: #333;
+        }
+        .md-body pre {
+            background: #2d2d2d;
+            color: #e0e0e0;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .md-body code {
+            font-family: 'Consolas', 'Monaco', monospace;
+            background: rgba(0,0,0,0.06);
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .md-body pre code { background: none; padding: 0; }
+        .md-body table {
+            border-collapse: collapse;
+            margin: 6px 0;
+        }
+        .md-body th, .md-body td {
+            border: 1px solid #d0d0d0;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+        .md-body ul, .md-body ol { padding-left: 22px; }
+
+        /* 审核面板 */
+        .review-section {
+            display: none;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 2px solid #ffc107;
+        }
+        .review-section.show { display: block; }
+        .review-wait-banner {
+            background: #fff3cd;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            color: #856404;
+        }
+        .review-content-box {
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .review-content-box h4 {
+            font-size: 13px;
+            color: #856404;
+            margin-bottom: 6px;
+        }
+
+        /* 终态信息 */
+        .final-status-box {
+            display: none;
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .final-status-box.show { display: block; }
+
+        /* 结果与证据 */
+        .result-card {
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 14px;
+        }
+        .result-card h4 {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 6px;
+        }
+        .plain-result {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 360px;
+            overflow-y: auto;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #ddd;
+            padding: 4px 8px;
+            text-align: left;
+            word-break: break-all;
+            max-width: 260px;
+        }
+        .data-table th {
+            background: #eef3fa;
+            color: #333;
+        }
+        details.evidence {
+            margin-top: 8px;
+        }
+        details.evidence summary {
+            cursor: pointer;
+            color: #007bff;
+            font-size: 13px;
+        }
+
+        /* 反馈区 */
+        .feedback-section {
+            display: none;
+            margin-top: 16px;
+            padding-top: 14px;
+            border-top: 2px solid #28a745;
+        }
+        .feedback-section.show { display: block; }
+        .feedback-section h4 {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .feedback-note {
+            font-size: 12px;
+            color: #28a745;
+            margin-top: 6px;
+        }
+
+        /* 会话历史列表 */
+        .session-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+        .session-table th, .session-table td {
+            border: 1px solid #e0e0e0;
+            padding: 5px 8px;
+            text-align: left;
+            word-break: break-all;
+        }
+        .session-table th { background: #f0f4f8; color: #333; }
+        .session-table button {
+            padding: 3px 10px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+<h1>RCAgent 查数归因工作台</h1>
+<p class="subtitle">智能归因分析：选源 → 提问 → 意图识别 / 检索 / SQL 生成 / 验证 / 人工审核 / 执行 / 归因</p>
+<p class="breadcrumb"><a href="../index.html">首页</a> &gt; <a href="../workflow/workflow.html">智能体工作流</a> &gt; RCAgent 查数归因工作台</p>
+
+<!-- ==================== 1. 发起归因分析 ==================== -->
+<div class="section">
+    <h2><span class="badge post">POST</span> 发起 RCAgent 归因分析</h2>
+    <!-- rca1.9.0.0 功能点 2（D2/Q3）：「按系统选择」行上移到「数据源」行上方，#candidateSources 随行上移；两行内部 id/onchange/选项文案逐字不变 -->
+    <div class="form-row">
+        <label for="systemSelect">按系统选择</label>
+        <select id="systemSelect" onchange="onSystemChange()">
+            <option value="">（不按系统，选择单个数据源）</option>
+        </select>
+    </div>
+    <div id="candidateSources" class="tip" style="display:none;margin:-6px 0 12px 80px;"></div>
+    <div class="form-row">
+        <label for="dsSelect">数据源</label>
+        <select id="dsSelect">
+            <option value="">加载中…</option>
+        </select>
+    </div>
+    <!-- rca1.9.0.0 功能点 2（Q10）：置灰原因与解除方式以可读文本呈现，改善可访问性；纯新增元素，不覆盖既有 id -->
+    <div id="dsSelectHint" class="tip" style="display:none;"></div>
+    <div class="form-row">
+        <label for="dsIdInput">dsId（手动）</label>
+        <input type="text" id="dsIdInput" placeholder="可选，优先使用下拉选择；下拉不可用时手动填写数据源 ID">
+        <button type="button" class="secondary" id="btnRefreshDs" onclick="loadDataSources(true)">刷新列表</button>
+    </div>
+    <div class="form-row">
+        <label for="question">分析问题</label>
+        <textarea id="question" rows="3" maxlength="4000" placeholder="例如：本月华东区销售额为什么下降？请列出各营业厅明细"></textarea>
+    </div>
+    <div class="btn-row">
+        <button id="btnStart" class="primary" onclick="startAnalysis()">开始分析</button>
+    </div>
+    <div class="tip">提交后立即返回 threadId 并通过 SSE 实时推送步骤进度；高危 SQL / 归因结论需人工审核放行</div>
+</div>
+
+<!-- ==================== 2. 查询 / 历史会话 ==================== -->
+<div class="section">
+    <h2><span class="badge get">GET</span> 查询会话 / 历史会话</h2>
+    <div class="form-row">
+        <label for="queryThreadId">Thread ID</label>
+        <input type="text" id="queryThreadId" placeholder="输入会话 threadId 查询（页面刷新后恢复查看）">
+        <button class="info" onclick="querySession()">查询</button>
+        <button class="secondary" onclick="loadSessions()">查看历史会话</button>
+    </div>
+    <div id="sessionListWrap" style="display:none;margin-top:8px;">
+        <div id="sessionListMsg" class="tip"></div>
+        <table class="session-table" id="sessionTable" style="display:none;">
+            <thead>
+            <tr>
+                <th style="width:170px;">Thread ID</th>
+                <th>问题</th>
+                <th style="width:100px;">状态</th>
+                <th style="width:80px;">操作</th>
+            </tr>
+            </thead>
+            <tbody id="sessionTableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<div id="loading"></div>
+
+<!-- ==================== 进度 / 审核 / 结果面板 ==================== -->
+<div id="progress" class="progress-panel">
+    <div class="progress-header">
+        执行进度
+        <span class="progress-thread" id="progressThreadId"></span>
+        <span id="statusTagBox"></span>
+    </div>
+    <div id="sessionMeta" class="session-meta" style="display:none;"></div>
+    <div id="msgBanner" class="msg-banner"></div>
+    <div id="steps"></div>
+
+    <!-- 手动操作区：RUNNING 终止 / FAILED 恢复 / RUNNING 残留恢复 -->
+    <div id="actionSection" style="display:none;margin-top:16px;padding:12px;border-radius:6px;background:#e3f2fd;border:1px solid #90caf9;">
+        <strong style="color:#1565c0;" id="actionTitle">🔁 会话执行中</strong>
+        <span style="color:#1565c0;font-size:12px;margin-left:8px;" id="actionDesc"></span>
+        <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
+            <button id="btnRecover" class="info" onclick="recoverSession()">▶ 从 checkpoint 恢复</button>
+            <button id="btnTerminate" class="danger" onclick="terminateSession()">⏹ 手动终止</button>
+        </div>
+    </div>
+
+    <!-- 人工审核面板 -->
+    <div id="reviewSection" class="review-section">
+        <div class="review-wait-banner">
+            <strong>⏸ 等待人工审核</strong>
+            <span style="font-size:12px;margin-left:8px;">请审核 SQL 与归因结论后选择操作；打回 / 拒绝请填写意见</span>
+        </div>
+        <div class="review-content-box">
+            <h4>审核内容</h4>
+            <div id="reviewContent" class="md-body"></div>
+        </div>
+        <div class="form-row">
+            <label for="comment">审核意见</label>
+            <input type="text" id="comment" maxlength="1024" placeholder="可选，打回原因 / 终止说明">
+        </div>
+        <div class="btn-row decision-group">
+            <button id="btnApprove" class="success" onclick="reviewAction('APPROVED')">✓ 通过 (APPROVED)</button>
+            <button id="btnSentBack" class="warning" onclick="reviewAction('SENT_BACK')">↩ 打回 (SENT_BACK)</button>
+            <button id="btnReject" class="danger"  onclick="reviewAction('TERMINATED')">✗ 拒绝 (TERMINATED)</button>
+        </div>
+        <div class="tip">通过 → 继续执行 | 打回 → 带意见回退重新生成 | 拒绝 → 终止会话</div>
+    </div>
+
+    <!-- 终态信息 -->
+    <div id="finalStatus" class="final-status-box"></div>
+
+    <!-- 结果 / 证据 / 反馈 -->
+    <div id="resultArea" style="display:none;"></div>
+    <div id="feedbackSection" class="feedback-section">
+        <h4>💬 本次结果对您有帮助吗？</h4>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <button id="btnUseful" class="success" onclick="sendFeedback('USEFUL')">👍 有用</button>
+            <button id="btnUseless" class="secondary" onclick="sendFeedback('USELESS')">👎 无用</button>
+            <button id="btnCorrection" class="warning" onclick="sendFeedback('CORRECTION')">✏️ 纠错</button>
+            <input type="text" id="feedbackComment" placeholder="可选：反馈内容 / 纠错文本（≤2000）" maxlength="2000" style="flex:1;min-width:200px;">
+        </div>
+        <div id="feedbackNote" class="feedback-note"></div>
+    </div>
+</div>
+
+<div id="result" class="result-panel"></div>
+
+<script>
+    // ============ 常量与全局状态 ============
+    const API_BASE = '/api/v1/rcagent';
+    // 多源会话：系统分组视图与候选源解析接口（multi-source-session 契约）
+    const RCA_SOURCES_API_BASE = API_BASE + '/sources';
+    // 数据源列表接口（依赖模块 multi-datasource-admin / db-access-common 契约，联调锚点 module-009）
+    const DS_API_BASE = '/api/v1/datasource';
+
+    let es = null;            // EventSource
+    let pollFallback = null;  // SSE 无事件时后台 /state 轮询
+    let pollDelayTimer = null;// 轮询延迟启动定时器
+
+    // RCAgent 步骤定义：key 为展示步骤，match 为该步骤关注的 SSE state 键
+    const RCA_STEPS = [
+        { key: 'intent',     name: '意图识别', match: ['intent_type', 'intent_result'] },
+        { key: 'retrieval',  name: '知识检索', match: ['retrieval_context'] },
+        { key: 'sql_plan',   name: 'SQL 规划', match: ['sql_plan'] },
+        { key: 'sql_generate', name: 'SQL 生成', match: ['sql_generate', 'sql_draft'] },
+        { key: 'validate',   name: '验证分级', match: ['sql_validate_report', 'risk_level'] },
+        { key: 'review',     name: '人工审核', match: ['review_content', 'review_decision', 'workflow_status'] },
+        { key: 'execute',    name: '执行查询', match: ['query_result'] },
+        { key: 'attribution', name: '归因分析', match: ['attribution_result'] },
+        { key: 'result',     name: '结果生成', match: ['result_summary'] },
+    ];
+
+    const STATUS_TEXT = {
+        'RUNNING': '运行中', 'WAITING_REVIEW': '待审核', 'SENT_BACK': '已打回',
+        'COMPLETED': '已完成', 'TERMINATED': '已终止', 'FAILED': '失败'
+    };
+
+    function $(id) { return document.getElementById(id); }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str == null ? '' : String(str);
+        return div.innerHTML;
+    }
+
+    /** 安全渲染 markdown：先 HTML 转义再 marked，防止不可信内容 XSS 注入（rules.md 第 6 节约定） */
+    function renderMarkdown(text) {
+        if (text == null || text === '') return '';
+        const safe = escapeHtml(text);
+        // marked CDN 未加载成功时降级为纯文本展示（保持安全），不阻塞主流程
+        if (typeof marked === 'undefined' || typeof marked.parse !== 'function') {
+            return '<pre class="plain-result">' + safe + '</pre>';
+        }
+        return marked.parse(safe);
+    }
+
+    function nowStr() {
+        const d = new Date();
+        return d.getHours().toString().padStart(2, '0') + ':'
+            + d.getMinutes().toString().padStart(2, '0') + ':'
+            + d.getSeconds().toString().padStart(2, '0');
+    }
+
+    function statusTag(status) {
+        const text = STATUS_TEXT[status] || status;
+        return '<span class="status-tag status-' + escapeHtml(status) + '">' + escapeHtml(text || status) + '</span>';
+    }
+
+    function showLoading() {
+        $('loading').style.display = 'block';
+        $('result').classList.remove('show', 'error');
+    }
+
+    function hideLoading() {
+        $('loading').style.display = 'none';
+    }
+
+    function showResult(html, isError) {
+        hideLoading();
+        const panel = $('result');
+        panel.innerHTML = html;
+        panel.classList.add('show');
+        if (isError) panel.classList.add('error');
+        panel.scrollTop = 0;
+    }
+
+    function showMsg(msg, isError) {
+        const banner = $('msgBanner');
+        banner.textContent = msg || '';
+        banner.className = 'msg-banner show' + (isError ? ' error' : '');
+        if (!msg) banner.classList.remove('show');
+    }
+
+    // ============ 数据源下拉 ============
+    async function loadDataSources(manual) {
+        const sel = $('dsSelect');
+        if (!manual) sel.innerHTML = '<option value="">加载中…</option>';
+        try {
+            // 先取启用中（ACTIVE）的数据源
+            let json = await fetch(DS_API_BASE + '/page?page=1&pageSize=100&manageState=ACTIVE').then(r => r.json());
+            let list = (json.code === 0 && json.data && json.data.records) ? json.data.records : [];
+            if (list.length === 0) {
+                // 兜底：取全部（默认排除已删除），option 标注非启用状态
+                json = await fetch(DS_API_BASE + '/page?page=1&pageSize=100').then(r => r.json());
+                list = (json.code === 0 && json.data && json.data.records) ? json.data.records : [];
+            }
+            if (list.length === 0) {
+                sel.innerHTML = '<option value="">（无可用数据源，请先注册）</option>';
+                $('dsIdInput').placeholder = '数据源列表为空，请先在数据源管理页注册并启用';
+                return;
+            }
+            // 占位项保持现状；option 明细按 system_code 分组输出 optgroup（组内 value/label/disabled 逐字符不变）
+            let html = '<option value="">请选择数据源…</option>';
+            const groups = [];
+            const groupIndex = {};
+            for (const ds of list) {
+                // system_code 为空的源归入「未分组」组（用不可见占位 key 避免与真实编码冲突）
+                const sysCode = ds.systemCode ? String(ds.systemCode) : '';
+                const groupKey = sysCode || '\u0000ungrouped';
+                if (groupIndex[groupKey] === undefined) {
+                    groupIndex[groupKey] = groups.length;
+                    groups.push({ systemCode: sysCode, items: [] });
+                }
+                groups[groupIndex[groupKey]].items.push(ds);
+            }
+            for (const g of groups) {
+                // 组标签候选源数量按启用（ACTIVE）源计，与 sources/systems 的 candidateCount 口径一致
+                const candidateCount = g.items.filter(d => d.manageState === 'ACTIVE' || d.status === 1).length;
+                const groupLabel = (g.systemCode || '未分组') + '（' + candidateCount + ' 个候选源）';
+                html += '<optgroup label="' + escapeHtml(groupLabel) + '">';
+                for (const ds of g.items) {
+                    const enabled = ds.manageState === 'ACTIVE' || ds.status === 1;
+                    const mark = enabled ? '' : '（非启用）';
+                    const label = (ds.dsName || ds.dsId) + '  [' + (ds.dsId || '') + (ds.dbType ? ' / ' + ds.dbType : '') + ']' + mark;
+                    html += '<option value="' + escapeHtml(ds.dsId) + '"' + (enabled ? '' : ' disabled') + '>' + escapeHtml(label) + '</option>';
+                }
+                html += '</optgroup>';
+            }
+            sel.innerHTML = html;
+        } catch (err) {
+            sel.innerHTML = '<option value="">（列表加载失败，请手动输入 dsId）</option>';
+        }
+    }
+
+    function currentDsId() {
+        const manual = $('dsIdInput').value.trim();
+        if (manual) return manual;
+        return $('dsSelect').value;
+    }
+
+    // ============ 系统分组选源与候选源展示（multi-source-session） ============
+    /** 加载系统分组列表：GET /api/v1/rcagent/sources/systems */
+    async function loadSystems() {
+        const sel = $('systemSelect');
+        if (!sel) return;
+        try {
+            const json = await fetch(RCA_SOURCES_API_BASE + '/systems').then(r => r.json());
+            const groups = (json.code === 0 && Array.isArray(json.data)) ? json.data : [];
+            let html = '<option value="">（不按系统，选择单个数据源）</option>';
+            for (const g of groups) {
+                // 仅取真实系统编码：systemName 是展示名（「未分组」组 systemCode 为 null），不能作为 value 提交
+                const systemCode = g.systemCode || '';
+                if (!systemCode) continue; // 「未分组」项不进入「按系统选择」（仍可在数据源下拉中选择）
+                const label = systemCode + '（' + (g.candidateCount != null ? g.candidateCount : 0) + ' 个候选源）';
+                html += '<option value="' + escapeHtml(systemCode) + '">' + escapeHtml(label) + '</option>';
+            }
+            sel.innerHTML = html;
+            // rca1.9.0.0 功能点 2 默认态（D1/FR-FE-005）：自动选中首个真实系统（首个非空 systemCode，跳过「未分组」）；
+            // 无真实系统时保持 ''，进入 SINGLE 态（#dsSelect 保持可用，可手动输入 dsId 兜底）
+            let firstSystemCode = '';
+            for (let i = 0; i < sel.options.length; i++) {
+                if (sel.options[i].value) { firstSystemCode = sel.options[i].value; break; }
+            }
+            sel.value = firstSystemCode;
+            applySourceSelectorState();
+            // Q4：默认选中首个系统后同步解析一次候选源（与手动切换行为一致；失败由既有 renderCandidateError 兜底）
+            if (firstSystemCode) resolveSources({ systemCode: firstSystemCode });
+        } catch (err) {
+            // 降级：系统列表不可用时保留手动输入 dsId 兜底，不阻断单源提交（NFR-FE-003）
+            sel.innerHTML = '<option value="">（系统列表加载失败，可继续手动选择数据源）</option>';
+            // rca1.9.0.0 功能点 2 降级（D4/FR-FE-009）：进入 SINGLE 态——#dsSelect 可用、提示位隐藏、不白屏
+            sel.value = '';
+            applySourceSelectorState();
+            // Q6：接口失败时补充可诊断信息（不改变用户可见行为）
+            console.warn('loadSystems 失败，已降级为单源选择：', err && err.message ? err.message : err);
+        }
+    }
+
+    /**
+     * rca1.9.0.0 功能点 2（FR-FE-006/007）：统一维护「按系统选择 ↔ 数据源下拉」联动态。
+     * 状态不变量：#dsSelect.disabled === ($('systemSelect').value !== '')；#dsIdInput 始终可用（单源兜底）。
+     * 「#dsSelect.disabled」的**唯一写点**收敛在本函数，避免多处写导致状态不一致（data-model.md §3.1 M-01）。
+     */
+    function applySourceSelectorState() {
+        const systemSel = $('systemSelect');
+        const dsSel = $('dsSelect');
+        const hint = $('dsSelectHint');
+        const systemCode = systemSel ? systemSel.value : '';
+        const bySystem = !!systemCode; // 选中具体系统 → 数据源下拉置灰禁用；「（不按系统，选择单个数据源）」→ 解禁
+        if (dsSel) dsSel.disabled = bySystem;
+        // rca1.9.0.0 缺陷修复（T002）：切到「按系统选择」时清空单源残留选择——
+        // 否则先选单库再切回具体系统，#dsSelect 会残留上一次选中项、#dsIdInput 亦会误导（提交体仍以 systemCode 优先，此处仅修展示态）；
+        // 切回「（不按系统，选择单个数据源）」（bySystem === false）时不额外清空，仅解禁，由用户自行选择
+        if (bySystem) {
+            if (dsSel) dsSel.value = '';
+            const dsInput = $('dsIdInput');
+            if (dsInput) dsInput.value = '';
+        }
+        if (hint) {
+            hint.textContent = bySystem
+                ? '已按系统选择，数据源下拉暂不可用；如需单源请将「按系统选择」切换为（不按系统，选择单个数据源）'
+                : '';
+            hint.style.display = bySystem ? 'block' : 'none';
+        }
+    }
+
+    /** 系统下拉变更：解析候选源；取消选择时隐藏候选源区 */
+    async function onSystemChange() {
+        const sel = $('systemSelect');
+        const systemCode = sel ? sel.value : '';
+        // rca1.9.0.0 功能点 2（FR-FE-007）：切换时同步刷新 #dsSelect 置灰态（覆盖下方 hideCandidates/return 分支）
+        applySourceSelectorState();
+        if (!systemCode) { hideCandidates(); return; }
+        await resolveSources({ systemCode: systemCode });
+    }
+
+    /** 解析候选源：POST /api/v1/rcagent/sources/resolve（前端不做拼装，展示与后端返回逐项一致） */
+    async function resolveSources(payload) {
+        if (!$('candidateSources')) return;
+        try {
+            const res = await fetch(RCA_SOURCES_API_BASE + '/resolve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const json = await res.json();
+            if (json.code === 0 && json.data) {
+                renderCandidates(json.data);
+            } else {
+                // 后端校验失败（如 40000）：仅提示候选源解析失败，不影响单源选择与提交
+                renderCandidateError(json.message || '候选源解析失败');
+            }
+        } catch (err) {
+            renderCandidateError('候选源加载失败，可继续手动选择数据源');
+        }
+    }
+
+    /** 渲染候选源集合（与后端返回的 dsIds 逐项一致；回显值全部经 escapeHtml 转义） */
+    function renderCandidates(vo) {
+        const box = $('candidateSources');
+        if (!box) return;
+        const dsIds = (vo && Array.isArray(vo.dsIds)) ? vo.dsIds : [];
+        if (dsIds.length === 0) {
+            box.innerHTML = '候选源集合：空（请检查系统下的启用数据源）';
+            box.style.display = 'block';
+            return;
+        }
+        const listText = dsIds.map(id => escapeHtml(id)).join('、');
+        let html = '候选源集合：' + listText + '（共 ' + dsIds.length + ' 个）';
+        if (dsIds.length === 1) {
+            html += '　<span style="color:#999;">该系统仅 1 个启用数据源，将按单源执行</span>';
+        }
+        box.innerHTML = html;
+        box.style.display = 'block';
+    }
+
+    /** 候选源解析失败提示（降级不白屏；错误 message 经 escapeHtml 转义） */
+    function renderCandidateError(message) {
+        const box = $('candidateSources');
+        if (!box) return;
+        box.innerHTML = '<span style="color:#c00;">' + escapeHtml(message) + '</span>';
+        box.style.display = 'block';
+    }
+
+    function hideCandidates() {
+        const box = $('candidateSources');
+        if (!box) return;
+        box.innerHTML = '';
+        box.style.display = 'none';
+    }
+
+    // ============ 步骤进度渲染 ============
+    function checkStepDone(state, step) {
+        if (state['workflow_status'] === 'SENT_BACK'
+                && (step.key === 'sql_generate' || step.key === 'validate')) {
+            // 打回重跑中：旧 sql_generate 为上一轮残留、validate 已清空，均不视为完成
+            return false;
+        }
+        if (step.key === 'intent') {
+            return !!(state['intent_type'] || state['intent_result']);
+        }
+        if (step.key === 'review') {
+            if (state['workflow_status'] === 'WAITING_REVIEW') return true;
+            return !!(state['review_decision']);
+        }
+        if (step.key === 'result') {
+            return !!(state['result_summary']) || state['workflow_status'] === 'COMPLETED';
+        }
+        for (const m of step.match) {
+            const v = state[m];
+            if (v != null && String(v) !== '') return true;
+        }
+        return false;
+    }
+
+    /** SSE 事件 key 是否命中某步骤 */
+    function stepMatches(step, sseKey) {
+        if (step.key === sseKey) return true;
+        if ((step.match || []).indexOf(sseKey) >= 0) return true;
+        return false;
+    }
+
+    function stepToSseKey(state, step) {
+        for (const m of (step.match || [])) {
+            if (state[m] != null) return m;
+        }
+        return step.match ? step.match[0] : step.key;
+    }
+
+    function resolveActiveStepKey(state, sseActiveKey) {
+        const ws = state['workflow_status'] || '';
+        // SENT_BACK 是打回后的瞬时中间态（后端会立即异步从 sql_generate 重跑），不作为终态，
+        // 继续按"进行中"推导活跃步骤，避免页面提前定格为"已打回"。
+        if (['WAITING_REVIEW', 'COMPLETED', 'TERMINATED', 'FAILED'].indexOf(ws) >= 0) return null;
+
+        if (sseActiveKey) {
+            for (const step of RCA_STEPS) {
+                if (stepMatches(step, sseActiveKey)) return step.key;
+            }
+        }
+        // 最近 15s 内有 SSE 更新的未完成步骤优先
+        const sseMap = window._sseLastUpdate || {};
+        const now = Date.now();
+        let best = null, bestAge = Infinity;
+        for (const step of RCA_STEPS) {
+            if (checkStepDone(state, step)) continue;
+            const lu = sseMap[step.key];
+            if (lu) {
+                const age = now - lu;
+                if (age < bestAge) { bestAge = age; best = step.key; }
+            }
+        }
+        if (best) return best;
+        // 否则取第一个未完成步骤（显示"思考中…"）
+        for (const step of RCA_STEPS) {
+            if (!checkStepDone(state, step)) return step.key;
+        }
+        return null;
+    }
+
+    /** 步骤正文文本（review 步骤特殊：content 独立展示，返回 null） */
+    function getStepText(state, step) {
+        const key = step.key;
+        if (key === 'intent') {
+            const type = state['intent_type'];
+            const res = state['intent_result'];
+            if (!type && !res) return '';
+            let t = '';
+            if (type) t += '【意图类型】' + type + '\n';
+            if (res) t += (t ? '\n' : '') + '【意图分析】\n' + res;
+            return t;
+        }
+        if (key === 'retrieval') return '【检索证据】\n' + (state['retrieval_context'] || '');
+        if (key === 'sql_plan') return state['sql_plan'] ? '【SQL 规划】\n' + state['sql_plan'] : '';
+        if (key === 'sql_generate') {
+            // 打回重跑中隐藏上一轮残留草案（避免绿勾展示旧 SQL）
+            if (state['workflow_status'] === 'SENT_BACK') return '';
+            return (state['sql_generate'] || state['sql_draft']) ? '【SQL 草案】\n' + (state['sql_generate'] || state['sql_draft']) : '';
+        }
+        if (key === 'validate') {
+            const risk = state['risk_level'];
+            const report = state['sql_validate_report'];
+            if (!risk && !report) return '';
+            let t = '';
+            if (risk) t += '【风险等级】' + risk + '\n';
+            if (report) t += (t ? '\n' : '') + '【验证报告】\n' + report;
+            return t;
+        }
+        if (key === 'review') {
+            // 审核内容（SQL+归因结论）需 marked 渲染，由 renderStepContent 单独处理
+            return state['review_content'] ? '[markdown]' : '';
+        }
+        if (key === 'execute') return state['query_result'] ? '【查询结果摘要】\n' + String(state['query_result']).substring(0, 800) : '';
+        if (key === 'attribution') return state['attribution_result'] ? '【归因分析】\n' + state['attribution_result'] : '';
+        if (key === 'result') return state['result_summary'] ? '【结果摘要】\n' + state['result_summary'] : '';
+        return '';
+    }
+
+    function renderProgress(state, sseActiveKey) {
+        const stepsDiv = $('steps');
+        const isFirstRender = !stepsDiv.querySelector('.progress-step');
+        const isWaitingReview = state['workflow_status'] === 'WAITING_REVIEW';
+        const activeStepKey = resolveActiveStepKey(state, sseActiveKey);
+
+        if (isFirstRender) {
+            let html = '';
+            for (const step of RCA_STEPS) {
+                html += '<div class="progress-step" data-step-key="' + step.key + '">' +
+                    '<span class="step-icon"></span>' +
+                    '<span class="step-name">' + step.name + '</span>' +
+                    '<div class="step-body" data-step="' + step.key + '"></div>' +
+                    '</div>';
+            }
+            stepsDiv.innerHTML = html;
+        }
+
+        stepsDiv.querySelectorAll('.progress-step').forEach(function(stepEl) {
+            const stepKey = stepEl.getAttribute('data-step-key');
+            const step = RCA_STEPS.find(s => s.key === stepKey);
+            if (!step) return;
+
+            let done = checkStepDone(state, step);
+            if (step.key === activeStepKey) done = false;
+
+            let cls;
+            if (done) {
+                cls = 'done';
+            } else if (isWaitingReview && step.key === 'review') {
+                cls = ''; // 暂停态：人工审核步骤不再闪烁，等待审核按钮区操作
+            } else if (step.key === activeStepKey) {
+                cls = 'active';
+            } else {
+                cls = '';
+            }
+
+            if (stepEl.getAttribute('data-last-cls') !== cls) {
+                stepEl.className = 'progress-step' + (cls ? ' ' + cls : '');
+                stepEl.querySelector('.step-icon').textContent = done ? '✓' : (cls === 'active' ? '⋯' : '');
+                stepEl.setAttribute('data-last-cls', cls);
+            }
+
+            // 正文更新：review 步骤用 marked 渲染，其余为纯文本（转义）
+            const bodyEl = stepEl.querySelector('.step-body');
+            if (step.key === 'review') {
+                const rc = state['review_content'];
+                if (rc && String(rc).length > 0) {
+                    // 仅在内容变化时重渲染，避免 SSE 高频事件反复重建 DOM（NFR-FE-001 节流）
+                    if (bodyEl.getAttribute('data-md') !== String(rc)) {
+                        bodyEl.innerHTML = '<div class="md-body">' + renderMarkdown(rc) + '</div>';
+                        bodyEl.setAttribute('data-md', String(rc));
+                    }
+                    bodyEl.className = 'step-body visible';
+                } else if (cls === 'active') {
+                    if (bodyEl.getAttribute('data-thinking') !== '1') {
+                        bodyEl.innerHTML = '<span style="color:#888;">思考中<span class="thinking-dot">.</span><span class="thinking-dot">.</span><span class="thinking-dot">.</span></span>';
+                        bodyEl.setAttribute('data-thinking', '1');
+                    }
+                    bodyEl.className = 'step-body visible';
+                } else {
+                    bodyEl.className = 'step-body';
+                }
+            } else {
+                const content = getStepText(state, step);
+                const text = (content === '[markdown]') ? '' : content;
+                if (done || cls === 'active') {
+                    if (text) {
+                        if (bodyEl.textContent !== text) {
+                            bodyEl.textContent = text;
+                            bodyEl.removeAttribute('data-thinking');
+                        }
+                        bodyEl.className = 'step-body visible';
+                    } else if (cls === 'active') {
+                        // 活跃步骤尚无内容：显示"思考中…"过渡提示（避免重复重建）
+                        if (bodyEl.getAttribute('data-thinking') !== '1') {
+                            bodyEl.innerHTML = '<span style="color:#888;">思考中<span class="thinking-dot">.</span><span class="thinking-dot">.</span><span class="thinking-dot">.</span></span>';
+                            bodyEl.setAttribute('data-thinking', '1');
+                        }
+                        bodyEl.className = 'step-body visible';
+                    } else {
+                        bodyEl.removeAttribute('data-thinking');
+                        bodyEl.className = 'step-body';
+                    }
+                } else {
+                    bodyEl.removeAttribute('data-thinking');
+                    bodyEl.className = 'step-body';
+                }
+            }
+        });
+
+        // 会话元信息（数据源 + 问题）
+        const meta = [];
+        if (state['question']) meta.push('问题：' + state['question']);
+        if (state['ds_id']) meta.push('数据源：' + state['ds_id']);
+        // 跨源会话：展示后端已脱敏的「跨源说明」（键缺失/为空时不展示，单源与历史会话展示零变化）
+        if (state['cross_source_note']) meta.push(state['cross_source_note']);
+        // 多源会话：展示系统编码与覆盖数据源清单（ds_ids 缺失时（历史会话）不展示且不报错）
+        if (state['system_code']) meta.push('系统：' + state['system_code']);
+        if (Array.isArray(state['ds_ids']) && state['ds_ids'].length > 1) {
+            meta.push('覆盖数据源：' + state['ds_ids'].join('、') + '（共 ' + state['ds_ids'].length + ' 个）');
+        }
+        const metaBox = $('sessionMeta');
+        if (meta.length > 0) {
+            metaBox.innerHTML = escapeHtml(meta.join('　|　'));
+            metaBox.style.display = 'block';
+        }
+    }
+
+    // ============ 审核 / 结果 / 终态 UI ============
+    function resetActions() {
+        setActionVisible(false);
+        setReviewVisible(false);
+        $('finalStatus').classList.remove('show');
+        $('finalStatus').innerHTML = '';
+        $('resultArea').style.display = 'none';
+        $('resultArea').innerHTML = '';
+        $('feedbackSection').classList.remove('show');
+        $('feedbackNote').textContent = '';
+        $('comment').value = '';
+    }
+
+    /**
+     * rca1.9.0.0 功能点 3（D5/FR-FE-011~014）：发起新会话前清空上一次的展示态与进度态。
+     * 调用时机：仅由 startAnalysis() 在**前端校验通过后、POST /start 之前**调用（校验不通过零清空）。
+     * 约束：同步原子执行（中间不 await）；禁止触碰输入控件（#question/#queryThreadId/#dsIdInput/#systemSelect/#dsSelect）；
+     *      历史会话路径（querySession/loadByRecord/loadSessions）不得调用本函数（D6/SC-009）。
+     */
+    function resetSessionDisplay() {
+        // #1~#3：结果区/终态/审核区/操作区/反馈区（复用既有 resetActions()，其本体不改；#comment 被清属既有行为）
+        resetActions();
+        // #4：#sessionMeta 元数据
+        const meta = $('sessionMeta');
+        if (meta) { meta.innerHTML = ''; meta.style.display = 'none'; }
+        // #5：#msgBanner 横幅（等价于 textContent='' + 去 show/error）
+        showMsg('');
+        // #6：#steps（RCA_STEPS 步骤态 DOM，清空后 renderProgress 会按首渲染重建）
+        const steps = $('steps');
+        if (steps) steps.innerHTML = '';
+        // #7：#progressThreadId
+        const tid = $('progressThreadId');
+        if (tid) tid.textContent = '';
+        // #8：#statusTagBox（随后由 startAnalysis() 置为 RUNNING）
+        const tag = $('statusTagBox');
+        if (tag) tag.innerHTML = '';
+        // #9：#result 面板
+        $('result').classList.remove('show', 'error');
+        // #10：前端会话状态快照（按 threadId 归属，避免新会话合并旧会话残留键值）
+        window._rcState = {};
+        window._rcThreadId = null;
+        window._sseLastUpdate = {};
+        // #11：旧订阅句柄——进行中会话采用「直接切换订阅」（方案 A）：关闭旧 EventSource/轮询，**不调用** /terminate
+        closeEvents();
+    }
+
+    function setReviewVisible(visible) {
+        $('reviewSection').classList.toggle('show', visible);
+        ['btnApprove', 'btnSentBack', 'btnReject'].forEach(function(id) { $(id).disabled = !visible; });
+        if (visible) setActionVisible(false);
+    }
+
+    function setActionVisible(visible, status) {
+        $('actionSection').style.display = visible ? 'block' : 'none';
+        if (visible) {
+            const failed = status === 'FAILED';
+            $('actionTitle').textContent = failed ? '⚠️ 会话执行失败' : '🔁 会话执行中';
+            $('actionDesc').textContent = failed ? '可从最近 checkpoint 恢复执行' : '执行中会话可手动终止';
+            $('btnRecover').style.display = 'inline-block';
+            $('btnTerminate').style.display = status === 'RUNNING' ? 'inline-block' : 'none';
+        }
+    }
+
+    function showFinalStatus(status, message) {
+        const el = $('finalStatus');
+        const colors = {
+            'COMPLETED':  { bg: '#d4edda', border: '#28a745', text: '#155724', icon: '✅' },
+            'TERMINATED': { bg: '#f8d7da', border: '#dc3545', text: '#721c24', icon: '🛑' },
+            'FAILED':     { bg: '#e2e3e5', border: '#6c757d', text: '#383d41', icon: '❌' },
+            'SENT_BACK':  { bg: '#ffe5cc', border: '#fd7e14', text: '#8a4b08', icon: '↩' },
+            'WAITING_REVIEW': { bg: '#fff3cd', border: '#ffc107', text: '#856404', icon: '⏸' },
+        };
+        const c = colors[status] || colors['FAILED'];
+        let html = '<div style="background:' + c.bg + ';color:' + c.text + ';padding:12px;border-radius:6px;border:1px solid ' + c.border + ';">';
+        html += '<strong>' + c.icon + ' 会话' + (STATUS_TEXT[status] || status) + '</strong>';
+        if (message && message !== 'RCAgent 会话已启动，正在执行中...') {
+            html += '<div style="margin-top:4px;font-size:13px;word-break:break-all;">' + escapeHtml(message) + '</div>';
+        }
+        html += '</div>';
+        el.innerHTML = html;
+        el.classList.add('show');
+    }
+
+    /** 终态 UI 组装：WAITING_REVIEW→审核；COMPLETED→结果+反馈；FAILED/TERMINATED→终态+操作 */
+    function renderTerminalUi(data) {
+        const status = data.status || 'UNKNOWN';
+        const state = data.state || {};
+        // 仅当 _rcState 属于当前 threadId 时才合并：避免跨会话查询时把会话 A 的
+        // 可选键残留补进会话 B（T011 问题 3）；不一致时直接使用后端 /state 权威数据
+        const currentTid = $('progressThreadId').textContent.replace('Thread: ', '').trim();
+        const sseState = (window._rcThreadId && window._rcThreadId === currentTid) ? (window._rcState || {}) : {};
+        // 合并前端已累积字段：checkpoint 可能因写入时序缺失部分键
+        for (const k of Object.keys(sseState)) {
+            if (sseState[k] != null && state[k] == null) state[k] = sseState[k];
+        }
+        state['workflow_status'] = status;
+        renderProgress(state, null);
+
+        showMsg(state['workflow_message'] || (data.message || ''), status === 'FAILED');
+
+        if (status === 'WAITING_REVIEW') {
+            // 审核面板：review_content（marked + 转义）
+            resetActions();
+            $('reviewContent').innerHTML = renderMarkdown(state['review_content'] || '(无审核内容)');
+            setReviewVisible(true);
+            $('finalStatus').classList.remove('show');
+        } else if (status === 'COMPLETED') {
+            resetActions();
+            showFinalStatus(status, data.message || state['workflow_message']);
+            renderResultArea(state);
+            $('feedbackSection').classList.add('show');
+        } else if (status === 'SENT_BACK') {
+            resetActions();
+            showFinalStatus(status, data.message || state['workflow_message']);
+        } else if (status === 'FAILED') {
+            resetActions();
+            showFinalStatus(status, data.message || state['workflow_message']);
+            setActionVisible(true, 'FAILED');
+        } else if (status === 'TERMINATED') {
+            resetActions();
+            showFinalStatus(status, data.message || state['workflow_message']);
+        } else {
+            // RUNNING 残留：展示终止 / 恢复入口
+            resetActions();
+            showMsg(state['workflow_message'] || data.message || '会话仍在执行中', false);
+            setActionVisible(true, 'RUNNING');
+        }
+    }
+
+    // ============ 结果与证据渲染 ============
+    /** query_result 渲染：JSON 二维数组 / 对象数组 → 表格；markdown 表格 → marked；否则纯文本 */
+    function renderQueryResult(value) {
+        if (value == null || value === '') return '<p class="tip">（无查询结果）</p>';
+        const s = String(value).trim();
+        if (!s) return '<p class="tip">（无查询结果）</p>';
+
+        // 1) JSON 尝试
+        try {
+            const parsed = JSON.parse(s);
+            if (Array.isArray(parsed) && parsed.every(r => Array.isArray(r)) && parsed.length > 0) {
+                return arrayToTable(parsed);
+            }
+            if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && parsed[0] !== null) {
+                return objectArrayToTable(parsed);
+            }
+            if (typeof parsed === 'object' && parsed !== null) {
+                // 单对象：KV 表格
+                return objectArrayToTable([parsed]);
+            }
+        } catch (e) { /* 非 JSON，继续 */ }
+
+        // 2) markdown 表格形态
+        if (s.indexOf('|') >= 0 && s.indexOf('\n') >= 0) {
+            return '<div class="md-body">' + renderMarkdown(s) + '</div>';
+        }
+        // 3) 纯文本
+        return '<pre class="plain-result">' + escapeHtml(s) + '</pre>';
+    }
+
+    function arrayToTable(rows) {
+        if (!rows.length) return '<p class="tip">（空结果）</p>';
+        const MAX = 300;
+        const header = rows[0].map(c => '<th>' + escapeHtml(c) + '</th>').join('');
+        let body = '';
+        const limit = Math.min(rows.length, MAX);
+        for (let i = 1; i < limit; i++) {
+            body += '<tr>' + rows[i].map(c => '<td>' + escapeHtml(c) + '</td>').join('') + '</tr>';
+        }
+        let html = '<table class="data-table"><thead><tr>' + header + '</tr></thead><tbody>' + body + '</tbody></table>';
+        if (rows.length > MAX) html += '<p class="tip">… 仅展示前 ' + MAX + ' 行（共 ' + rows.length + ' 行）</p>';
+        return html;
+    }
+
+    function objectArrayToTable(rows) {
+        if (!rows.length) return '<p class="tip">（空结果）</p>';
+        const cols = [];
+        for (const r of rows) {
+            for (const k of Object.keys(r)) {
+                if (cols.indexOf(k) < 0) cols.push(k);
+            }
+        }
+        const header = cols.map(c => '<th>' + escapeHtml(c) + '</th>').join('');
+        const MAX = 300;
+        const limit = Math.min(rows.length, MAX);
+        let body = '';
+        for (let i = 0; i < limit; i++) {
+            body += '<tr>' + cols.map(c => {
+                const v = rows[i][c];
+                return '<td>' + escapeHtml(v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : v)) + '</td>';
+            }).join('') + '</tr>';
+        }
+        let html = '<table class="data-table"><thead><tr>' + header + '</tr></thead><tbody>' + body + '</tbody></table>';
+        if (rows.length > MAX) html += '<p class="tip">… 仅展示前 ' + MAX + ' 行（共 ' + rows.length + ' 行）</p>';
+        return html;
+    }
+
+    function renderResultArea(state) {
+        const wrap = $('resultArea');
+        let html = '';
+
+        // 结果说明
+        if (state['result_summary']) {
+            html += '<div class="result-card"><h4>📋 结果说明</h4><div class="md-body">'
+                + renderMarkdown(state['result_summary']) + '</div></div>';
+        }
+
+        // 查询结果
+        if (state['query_result']) {
+            html += '<div class="result-card"><h4>🗂 查询结果</h4>'
+                + renderQueryResult(state['query_result']) + '</div>';
+        }
+
+        // SQL 依据（折叠）
+        const sqlText = state['sql_draft'] || state['sql_generate'] || '';
+        if (sqlText) {
+            html += '<div class="result-card"><details class="evidence"><summary>🧾 SQL 依据</summary>'
+                + '<pre class="plain-result">' + escapeHtml(sqlText) + '</pre></details></div>';
+        }
+
+        // 归因分析结论
+        if (state['attribution_result']) {
+            html += '<div class="result-card"><h4>🔍 归因分析</h4><div class="md-body">'
+                + renderMarkdown(state['attribution_result']) + '</div></div>';
+        }
+
+        // 知识证据（retrieval_context 折叠）
+        if (state['retrieval_context']) {
+            html += '<div class="result-card"><details class="evidence"><summary>📚 检索证据（retrieval_context）</summary>'
+                + '<div class="md-body">' + renderMarkdown(String(state['retrieval_context']).substring(0, 4000)) + '</div></details></div>';
+        }
+
+        // 无证据且已高置信完成 → 标注（BR-005）
+        const hasEvidence = state['retrieval_context'] || state['attribution_result'];
+        if (!hasEvidence && state['result_summary'] && state['workflow_status'] === 'COMPLETED') {
+            html += '<div class="result-card"><span class="tip">ℹ️ 本次回答基于模型高置信输出，无检索 / 归因证据链，请谨慎采信（BR-005）。</span></div>';
+        }
+
+        wrap.innerHTML = html || '<div class="result-card"><span class="tip">（后端未返回结构化结果，请查看上方步骤内容或会话 message）</span></div>';
+        wrap.style.display = 'block';
+    }
+
+    // ============ SSE 监听 ============
+    function listenEvents(threadId, preserveContent) {
+        closeEvents();
+        $('progress').classList.add('show');
+        $('progressThreadId').textContent = 'Thread: ' + threadId;
+        $('queryThreadId').value = threadId;
+        $('statusTagBox').innerHTML = statusTag('RUNNING');
+
+        const state = {};
+        window._rcState = state;
+        window._rcThreadId = threadId; // 状态快照按 threadId 归属，防止跨会话合并残留（T011 问题 3）
+        window._sseLastUpdate = {};
+        let lastSseKey = null;
+        let sseErrorCount = 0;
+
+        if (preserveContent) {
+            // APPROVED 后保留已有步骤内容：立即从 /state 回填并渲染
+            fetch(API_BASE + '/state/' + encodeURIComponent(threadId))
+                .then(r => r.json())
+                .then(json => {
+                    if (json.code === 0 && json.data && json.data.state) {
+                        for (const [k, v] of Object.entries(json.data.state)) {
+                            state[k] = v;
+                        }
+                        renderProgress(state, null);
+                    }
+                }).catch(function(){});
+        } else {
+            // 首次 / 打回重跑：从头渲染
+            $('steps').innerHTML = '';
+            renderProgress({}, null);
+        }
+
+        function connectSSE() {
+            es = new EventSource(API_BASE + '/events/' + encodeURIComponent(threadId));
+
+            es.onmessage = function(e) {
+                try {
+                    const d = JSON.parse(e.data);
+                    // RUNNING 活跃会话保留"手动终止"入口：操作区在非终态保持可见（spec B.1.4）
+                    // 进入暂停/终态的事件由 handleWorkflowFinished 统一渲染，不闪现执行中操作区
+                    if (d.status && d.status !== 'RUNNING' && d.status !== 'SENT_BACK') {
+                        setActionVisible(false);
+                    } else {
+                        setActionVisible(true, 'RUNNING');
+                    }
+                    if (d.key && d.value != null) {
+                        const isDelta = !!d._delta;
+                        if (isDelta) {
+                            state[d.key] = (state[d.key] || '') + d.value;
+                        } else {
+                            // 全量覆盖：流式 Agent 的空启动信号不覆盖已有累积内容
+                            if (!(d.value === '' && state[d.key])) {
+                                state[d.key] = d.value;
+                            }
+                        }
+                        if (String(d.value).length > 0) {
+                            lastSseKey = d.key;
+                            const step = RCA_STEPS.find(s => stepMatches(s, d.key));
+                            const luKey = step ? step.key : d.key;
+                            window._sseLastUpdate[luKey] = Date.now();
+                        }
+                        // workflow_message 横幅
+                        if (d.key === 'workflow_message') {
+                            showMsg(d.value, false);
+                        }
+                        // 状态 tag
+                        if (d.status) {
+                            $('statusTagBox').innerHTML = statusTag(d.status);
+                        }
+                        renderProgress(state, lastSseKey);
+
+                        // 终态 / 暂停态：workflow_status 事件关闭 SSE（终态收尾），其余事件继续
+                        if (d.key === 'workflow_status') {
+                            // SENT_BACK 为瞬时中间态，不在此收尾；仅真正终态/待审核态关闭监听
+                            if (d.status && ['COMPLETED', 'TERMINATED', 'FAILED', 'WAITING_REVIEW'].indexOf(d.status) >= 0) {
+                                handleWorkflowFinished(threadId, d.status);
+                            }
+                        }
+                    }
+                } catch (ignore) {}
+            };
+
+            es.onerror = function() {
+                console.log('[SSE onerror] threadId=' + threadId + ', sseErrorCount=' + sseErrorCount);
+                if (es) { es.close(); es = null; }
+                // 已进入收尾（轮询已关闭），不再重连
+                if (pollFallback === null && pollDelayTimer === null) return;
+
+                fetch(API_BASE + '/state/' + encodeURIComponent(threadId))
+                    .then(r => r.json())
+                    .then(json => {
+                        if (json.code === 0) {
+                            const s = json.data && json.data.status;
+                            // SENT_BACK 为打回后瞬时中间态：与 RUNNING 一样重连，避免断连兜底时提前定格
+                            if ((s === 'RUNNING' || s === 'SENT_BACK') && sseErrorCount < 5) {
+                                sseErrorCount++;
+                                setTimeout(connectSSE, 1000);
+                            } else {
+                                handleWorkflowFinished(threadId, s);
+                            }
+                        } else {
+                            handleWorkflowFinished(threadId, null);
+                        }
+                    }).catch(function() {
+                        handleWorkflowFinished(threadId, null);
+                    });
+            };
+        }
+
+        connectSSE();
+
+        // 后台轮询补漏：3s 后每 2s 查询 /state
+        pollDelayTimer = setTimeout(function() {
+            pollFallback = setInterval(function() {
+                fetch(API_BASE + '/state/' + encodeURIComponent(threadId))
+                    .then(r => r.json())
+                    .then(json => {
+                        if (json.code === 0 && json.data && json.data.state) {
+                            const newStatus = json.data.status;
+                            // SENT_BACK 是打回后的瞬时中间态：继续轮询，等待重跑推进（RUNNING→WAITING_REVIEW/COMPLETED/…）
+                            if (newStatus && ['COMPLETED', 'TERMINATED', 'FAILED', 'WAITING_REVIEW'].indexOf(newStatus) >= 0) {
+                                handleWorkflowFinished(threadId, newStatus);
+                                return;
+                            }
+                            let updated = false;
+                            // 跳过最近 15s 内活跃的流式 key，防止轮询全量覆盖增量累积内容
+                            const nowTs = Date.now();
+                            const activeKeys = new Set();
+                            for (const k of Object.keys(window._sseLastUpdate || {})) {
+                                if (nowTs - window._sseLastUpdate[k] < 15000) activeKeys.add(k);
+                            }
+                            for (const [k, v] of Object.entries(json.data.state)) {
+                                if (activeKeys.has(k)) continue;
+                                if (state[k] !== v) {
+                                    state[k] = v;
+                                    updated = true;
+                                }
+                            }
+                            renderProgress(state, lastSseKey);
+                        }
+                    }).catch(function(){});
+            }, 2000);
+        }, 3000);
+    }
+
+    function closeEvents() {
+        if (es) { es.close(); es = null; }
+        if (pollFallback) { clearInterval(pollFallback); pollFallback = null; }
+        if (pollDelayTimer) { clearTimeout(pollDelayTimer); pollDelayTimer = null; }
+    }
+
+    /** 会话收尾：关闭 SSE/轮询，拉取最终状态并组装 UI */
+    function handleWorkflowFinished(threadId, knownStatus, force) {
+        // force=true 用于手动终止等显式收尾：即使 SSE/轮询句柄已全部置空也强制刷新终态 UI（T011 问题 1）
+        if (!force && es === null && pollFallback === null && pollDelayTimer === null) return;
+        // 兜底护栏：SENT_BACK 是打回后的瞬时中间态（后端会立即异步从 sql_generate 重跑），任何调用路径
+        // 都不得据此收尾；force=true（手动终止等显式收尾）按原逻辑执行，不受此护栏影响。
+        if (!force && knownStatus === 'SENT_BACK') return;
+        closeEvents();
+
+        fetch(API_BASE + '/state/' + encodeURIComponent(threadId))
+            .then(r => r.json())
+            .then(json => {
+                if (json.code === 0) {
+                    const data = json.data || {};
+                    // 竞态兜底：SSE 先收到终态但 /state 尚未写入（checkpoint 延迟），以 knownStatus 为准
+                    let status = data.status;
+                    if (knownStatus && (!status || status === 'RUNNING')) {
+                        status = knownStatus;
+                    }
+                    // 兜底护栏：/state 仍为 SENT_BACK（打回重跑中）→ 不收尾，恢复监听等待重跑推进
+                    // （此处 closeEvents 已执行，需重新订阅 SSE/轮询，避免页面停留在"已打回"定格）
+                    if (!force && status === 'SENT_BACK') {
+                        setActionVisible(true, 'RUNNING');
+                        listenEvents(threadId, true);
+                        return;
+                    }
+                    data.status = status;
+                    renderTerminalUi(data);
+                } else {
+                    showResult('<p style="color:red;">错误：' + escapeHtml(json.message || '未知错误') + '</p>', true);
+                }
+            }).catch(function() {});
+    }
+
+    // ============ 操作：start / review / recover / terminate / feedback / query ============
+    async function startAnalysis() {
+        const question = $('question').value.trim();
+        const systemSel = $('systemSelect');
+        const systemCode = systemSel ? systemSel.value : '';
+        const dsId = currentDsId();
+        if (!question) { alert('请输入分析问题'); return; }
+        // 请求体裁决：选系统 → {question, systemCode}；单源（下拉或手动 dsId）→ {question, dsId}（逐字符保持现状）
+        let reqBody;
+        if (systemCode) {
+            reqBody = { question: question, systemCode: systemCode };
+        } else {
+            if (!dsId) { alert('请选择数据源（ds_id）'); return; }
+            reqBody = { question: question, dsId: dsId };
+        }
+
+        // rca1.9.0.0 功能点 3（D5/FR-FE-011）：校验通过后、POST /start 之前清空上一次结果区与进度态；
+        // 校验不通过（上方两处 alert + return）零清空，保证误读防护与既有提示行为不变
+        resetSessionDisplay();
+
+        const btn = $('btnStart');
+        btn.disabled = true; // 防重复提交
+        $('result').classList.remove('show', 'error');
+        $('statusTagBox').innerHTML = statusTag('RUNNING');
+        try {
+            const res = await fetch(API_BASE + '/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(reqBody)
+            });
+            const json = await res.json();
+            if (json.code === 0 && json.data && json.data.threadId) {
+                // 启动成功后通过 SSE 订阅进度
+                showMsg('会话已启动，正在执行中…', false);
+                listenEvents(json.data.threadId, false);
+            } else {
+                showResult('<p style="color:red;">错误：' + escapeHtml(json.message || '未知错误') + '</p>', true);
+            }
+        } catch (err) {
+            showResult('<p style="color:red;">请求失败：' + escapeHtml(err.message) + '</p>', true);
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function reviewAction(decision) {
+        const threadId = $('progressThreadId').textContent.replace('Thread: ', '').trim();
+        const comment = $('comment').value.trim();
+        if (!threadId) { alert('缺少会话 threadId'); return; }
+
+        const prompts = {
+            'APPROVED': '确认通过审核吗？通过后将放行执行。',
+            'SENT_BACK': '确认打回吗？将带意见回退重新生成 SQL。',
+            'TERMINATED': '确认拒绝吗？该会话将被终止且不可恢复。'
+        };
+        if (!confirm(prompts[decision])) return; // 打回 / 拒绝二次确认（NFR-FE-002）
+
+        disableResumeButtons();
+        try {
+            const body = { threadId: threadId, reviewDecision: decision };
+            if (comment) body.comment = comment;
+            const res = await fetch(API_BASE + '/resume', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const json = await res.json();
+            if (json.code === 0) {
+                if (json.data && json.data.status === 'RUNNING') {
+                    // APPROVED / SENT_BACK 异步续跑：重新监听
+                    const preserve = decision === 'APPROVED';
+                    setReviewVisible(false);
+                    setActionVisible(false);
+                    if (decision === 'SENT_BACK') {
+                        showMsg('审核已打回，正在重新生成 SQL…', false);
+                    }
+                    listenEvents(json.data.threadId, preserve);
+                } else {
+                    // TERMINATED 同步终态
+                    const data = json.data || { status: 'TERMINATED', threadId: threadId };
+                    renderTerminalUi(data);
+                }
+            } else {
+                setReviewVisible(true);
+                showResult('<p style="color:red;">错误：' + escapeHtml(json.message || '未知错误') + '</p>', true);
+            }
+        } catch (err) {
+            setReviewVisible(true);
+            showResult('<p style="color:red;">请求失败：' + escapeHtml(err.message) + '</p>', true);
+        }
+    }
+
+    function disableResumeButtons() {
+        ['btnApprove', 'btnSentBack', 'btnReject'].forEach(function(id) { $(id).disabled = true; });
+    }
+
+    async function recoverSession() {
+        const threadId = $('progressThreadId').textContent.replace('Thread: ', '').trim();
+        if (!threadId) { alert('缺少会话 threadId'); return; }
+        if (!confirm('确定要从 checkpoint 恢复执行吗？')) return;
+
+        $('btnRecover').disabled = true;
+        try {
+            const res = await fetch(API_BASE + '/recover/' + encodeURIComponent(threadId), { method: 'POST' });
+            const json = await res.json();
+            if (json.code === 0) {
+                setActionVisible(false);
+                showMsg('已从 checkpoint 恢复执行…', false);
+                listenEvents(threadId, true);
+            } else {
+                alert('恢复失败：' + (json.message || '未知错误'));
+            }
+        } catch (err) {
+            alert('恢复失败：' + err.message);
+        } finally {
+            $('btnRecover').disabled = false;
+        }
+    }
+
+    async function terminateSession() {
+        const threadId = $('progressThreadId').textContent.replace('Thread: ', '').trim();
+        if (!threadId) { alert('缺少会话 threadId'); return; }
+        if (!confirm('确定要手动终止该会话吗？')) return;
+
+        $('btnTerminate').disabled = true;
+        try {
+            const res = await fetch(API_BASE + '/terminate/' + encodeURIComponent(threadId), { method: 'POST' });
+            const json = await res.json();
+            if (json.code === 0) {
+                // 先收尾再渲染终态：closeEvents() 会置空 es/pollFallback/pollDelayTimer，
+                // 若先调用会使 handleWorkflowFinished 的空判断短路，页面停在"执行中"（T011 问题 1）
+                handleWorkflowFinished(threadId, 'TERMINATED', true);
+            } else {
+                alert('终止失败：' + (json.message || '未知错误'));
+            }
+        } catch (err) {
+            alert('终止失败：' + err.message);
+        } finally {
+            $('btnTerminate').disabled = false;
+        }
+    }
+
+    async function sendFeedback(type) {
+        const threadId = $('progressThreadId').textContent.replace('Thread: ', '').trim();
+        if (!threadId) { alert('缺少会话 threadId'); return; }
+        const comment = $('feedbackComment').value.trim();
+
+        const btnMap = { 'USEFUL': 'btnUseful', 'USELESS': 'btnUseless', 'CORRECTION': 'btnCorrection' };
+        $(btnMap[type]).disabled = true; // 防重复提交
+        try {
+            const body = { threadId: threadId, feedbackType: type };
+            if (comment) body.comment = comment;
+            const res = await fetch(API_BASE + '/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const json = await res.json();
+            if (json.code === 0) {
+                $('feedbackNote').textContent = '✅ ' + (json.message || '反馈已记录') + '（' + nowStr() + '）';
+                $('feedbackComment').value = '';
+            } else {
+                $('feedbackNote').textContent = '❌ ' + (json.message || '反馈失败');
+                $(btnMap[type]).disabled = false;
+            }
+        } catch (err) {
+            $('feedbackNote').textContent = '❌ 请求失败：' + err.message;
+            $(btnMap[type]).disabled = false;
+        }
+    }
+
+    // ============ 查询 / 历史会话 ============
+    async function querySession() {
+        const threadId = $('queryThreadId').value.trim();
+        if (!threadId) { alert('请输入会话 threadId'); return; }
+
+        showLoading();
+        try {
+            const res = await fetch(API_BASE + '/state/' + encodeURIComponent(threadId));
+            const json = await res.json();
+            if (json.code === 0) {
+                hideLoading();
+                // 切换/查询到其他会话前清空旧会话 SSE 状态快照（_rcState 按 threadId 归属），避免跨会话合并旧键（T011 问题 3）
+                if (window._rcThreadId && window._rcThreadId !== threadId) {
+                    window._rcState = null;
+                    window._rcThreadId = null;
+                }
+                const d = json.data || {};
+                // 统一进入进度面板：RUNNING 继续 SSE 监听，其余按终态 UI 展示
+                $('progress').classList.add('show');
+                $('progressThreadId').textContent = 'Thread: ' + threadId;
+                $('queryThreadId').value = threadId;
+                $('statusTagBox').innerHTML = statusTag(d.status);
+
+                const status = d.status || 'UNKNOWN';
+                if (status === 'RUNNING' || status === 'SENT_BACK') {
+                    // SENT_BACK 为打回后瞬时中间态，继续监听重跑
+                    listenEvents(threadId, true);
+                    setActionVisible(true, 'RUNNING');
+                    if (status === 'SENT_BACK') showMsg(d.message || '审核已打回，正在重新生成 SQL…', false);
+                } else {
+                    closeEvents();
+                    renderTerminalUi(d);
+                }
+            } else {
+                hideLoading();
+                showResult('<p style="color:red;">错误：' + escapeHtml(json.message || '未知错误') + '</p>', true);
+            }
+        } catch (err) {
+            hideLoading();
+            showResult('<p style="color:red;">请求失败：' + escapeHtml(err.message) + '</p>', true);
+        }
+    }
+
+    async function loadSessions() {
+        const wrap = $('sessionListWrap');
+        wrap.style.display = 'block';
+        $('sessionTable').style.display = 'none';
+        $('sessionListMsg').textContent = '加载历史会话中…';
+        try {
+            const res = await fetch(API_BASE + '/sessions?page=1&pageSize=15');
+            const json = await res.json();
+            const records = (json.code === 0 && json.data && json.data.records) ? json.data.records : [];
+            if (records.length === 0) {
+                $('sessionListMsg').textContent = '暂无历史会话';
+                return;
+            }
+            $('sessionListMsg').textContent = '共 ' + ((json.data && json.data.total) || records.length) + ' 条，展示最近 ' + records.length + ' 条，点击行查看：';
+            let rows = '';
+            for (const r of records) {
+                const st = statusTag(r.status);
+                rows += '<tr style="cursor:pointer;" onclick="loadByRecord(' + "'" + escapeHtml(r.threadId) + "'" + ')">' +
+                    '<td>' + escapeHtml(r.threadId || '') + '</td>' +
+                    '<td>' + escapeHtml((r.question || '').substring(0, 40)) + '</td>' +
+                    '<td>' + st + '</td>' +
+                    '<td><button class="info">查看</button></td>' +
+                    '</tr>';
+            }
+            $('sessionTableBody').innerHTML = rows;
+            $('sessionTable').style.display = 'table';
+        } catch (err) {
+            $('sessionListMsg').textContent = '历史会话加载失败（接口可能尚未就绪）：' + err.message;
+        }
+    }
+
+    function loadByRecord(threadId) {
+        $('queryThreadId').value = threadId;
+        querySession();
+    }
+
+    // ============ 初始化 ============
+    (function init() {
+        loadDataSources(false);
+        loadSystems();
+
+        // 回车快捷查询
+        $('queryThreadId').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') querySession();
+        });
+
+        // URL 参数自动查询：从历史页 / 其他入口带 threadId 打开时自动载入
+        const params = new URLSearchParams(window.location.search);
+        const tid = params.get('threadId');
+        if (tid) {
+            $('queryThreadId').value = tid;
+            querySession();
+        }
+    })();
+</script>
+</body>
+</html>

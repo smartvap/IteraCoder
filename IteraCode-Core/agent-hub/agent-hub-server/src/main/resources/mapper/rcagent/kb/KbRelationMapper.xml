@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.kb.mapper.KbRelationMapper">
+
+    <!-- 表关系检索召回（接口23）：默认高置信；table_a/table_b 至少给一个 -->
+    <select id="selectRetrievalRelations" resultType="com.agenthub.ai.rcagent.kb.entity.KbRelation">
+        SELECT id, ds_id, db_type, table_a, column_a, table_b, column_b, join_fields,
+               relation_type, relation_source, knowledge_source, confidence, verified,
+               evidence, status, version, hit_count, error_count, create_time, update_time
+        FROM kb_relation
+        WHERE ds_id = #{dsId}
+          AND verified = 1 AND status = 'active'
+        <if test="relationType != null and relationType != ''">
+            AND relation_type = #{relationType}
+        </if>
+        <choose>
+            <when test="tableA != null and tableA != '' and tableB != null and tableB != ''">
+                AND ((table_a = #{tableA} AND table_b = #{tableB})
+                     OR (table_a = #{tableB} AND table_b = #{tableA}))
+            </when>
+            <when test="tableA != null and tableA != ''">
+                AND (table_a = #{tableA} OR table_b = #{tableA})
+            </when>
+            <when test="tableB != null and tableB != ''">
+                AND (table_a = #{tableB} OR table_b = #{tableB})
+            </when>
+        </choose>
+        ORDER BY confidence DESC, create_time DESC
+        LIMIT #{topK}
+    </select>
+
+</mapper>

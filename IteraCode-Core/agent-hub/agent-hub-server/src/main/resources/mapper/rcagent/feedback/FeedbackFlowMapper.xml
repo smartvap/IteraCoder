@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agenthub.ai.rcagent.feedback.mapper.FeedbackFlowMapper">
+
+    <!-- 反馈闭环分页（接口3）：由 MyBatis-Plus PaginationInnerInterceptor 自动分页，SQL 不写 limit -->
+    <select id="selectPageFlows" resultType="com.agenthub.ai.rcagent.feedback.entity.FeedbackFlow">
+        SELECT id, ds_id, feedback_id, session_id, feedback_type, change_type, change_confidence,
+               diff_summary, suggestions, review_task_ids, analyze_status, status, writeback_repo,
+               wiki_writeback_flag, confidence_pushed, signal_keys, a_writeback_done, b_writeback_done,
+               error_msg, retry_count, create_time, update_time
+        FROM fb_feedback_flow
+        WHERE ds_id = #{dsId}
+        <if test="statusList != null and statusList.size() > 0">
+            AND status IN
+            <foreach collection="statusList" item="st" open="(" separator="," close=")">
+                #{st}
+            </foreach>
+        </if>
+        <if test="feedbackType != null and feedbackType != ''">
+            AND feedback_type = #{feedbackType}
+        </if>
+        <if test="changeType != null and changeType != ''">
+            AND change_type = #{changeType}
+        </if>
+        <if test="sessionId != null and sessionId != ''">
+            AND session_id = #{sessionId}
+        </if>
+        <if test="startTime != null">
+            AND create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 类型分布统计（接口4） -->
+    <select id="countByFeedbackType" resultType="com.agenthub.ai.rcagent.feedback.dto.FeedbackCountItem">
+        SELECT feedback_type AS group_key, COUNT(*) AS cnt
+        FROM fb_feedback_flow
+        WHERE ds_id = #{dsId}
+        <if test="startTime != null">
+            AND create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+        GROUP BY feedback_type
+    </select>
+    <!-- 状态分布统计（接口4） -->
+    <select id="countByStatus" resultType="com.agenthub.ai.rcagent.feedback.dto.FeedbackCountItem">
+        SELECT status AS group_key, COUNT(*) AS cnt
+        FROM fb_feedback_flow
+        WHERE ds_id = #{dsId}
+        <if test="startTime != null">
+            AND create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+        GROUP BY status
+    </select>
+
+</mapper>
